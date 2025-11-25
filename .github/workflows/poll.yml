@@ -1,0 +1,23 @@
+name: Poll Messages
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # 5分毎
+  workflow_dispatch:  # 手動実行用
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Gmail Poll
+        run: |
+          curl -X POST "${{ secrets.API_BASE_URL }}/api/v1/poll/gmail" \
+            -H "Authorization: Bearer ${{ secrets.SERVICE_KEY }}" \
+            -H "Content-Type: application/json"
+      
+      - name: Trigger Chatwork Poll
+        run: |
+          curl -X POST "${{ secrets.API_BASE_URL }}/api/v1/poll/chatwork" \
+            -H "Authorization: Bearer ${{ secrets.SERVICE_KEY }}" \
+            -H "Content-Type: application/json"
+
