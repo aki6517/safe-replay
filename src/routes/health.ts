@@ -7,6 +7,40 @@ import { redis, isRedisAvailable } from '../db/redis';
 
 export const healthRoutes = new Hono();
 
+// Service Key認証ミドルウェア
+async function verifyServiceKey(c: any, next: any) {
+  const authHeader = c.req.header('Authorization');
+  const serviceKey = process.env.SERVICE_KEY;
+
+  if (!serviceKey) {
+    return c.json(
+      {
+        status: 'error',
+        error: {
+          code: 'SERVICE_KEY_NOT_CONFIGURED',
+          message: 'Service key not configured'
+        }
+      },
+      500
+    );
+  }
+
+  if (authHeader !== `Bearer ${serviceKey}`) {
+    return c.json(
+      {
+        status: 'error',
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Unauthorized'
+        }
+      },
+      401
+    );
+  }
+
+  await next();
+}
+
 // シンプルなヘルスチェック
 healthRoutes.get('/', async (c) => {
   return c.json({
@@ -15,8 +49,8 @@ healthRoutes.get('/', async (c) => {
   });
 });
 
-// 詳細ヘルスチェック
-healthRoutes.get('/deep', async (c) => {
+// 詳細ヘルスチェック（Service Key認証必須）
+healthRoutes.get('/deep', verifyServiceKey, async (c) => {
   const components: Record<string, any> = {};
 
   // データベースチェック
