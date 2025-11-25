@@ -188,3 +188,45 @@ CREATE TRIGGER update_api_credentials_updated_at BEFORE UPDATE ON api_credential
 CREATE TRIGGER update_messages_updated_at BEFORE UPDATE ON messages
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+-- ========================================
+-- ROW LEVEL SECURITY (RLS)
+-- ========================================
+-- RLS有効化
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE api_credentials ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE whitelist_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE blacklist_entries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE message_drafts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE message_attachments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE message_actions ENABLE ROW LEVEL SECURITY;
+
+-- サービスロール用ポリシー（バックエンドからの全アクセス許可）
+CREATE POLICY "Service role has full access" ON users
+  FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service role has full access" ON api_credentials
+  FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service role has full access" ON user_settings
+  FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service role has full access" ON whitelist_entries
+  FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service role has full access" ON blacklist_entries
+  FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service role has full access" ON messages
+  FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service role has full access" ON message_drafts
+  FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service role has full access" ON message_attachments
+  FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service role has full access" ON message_actions
+  FOR ALL USING (auth.role() = 'service_role');
+
