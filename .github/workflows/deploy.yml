@@ -31,10 +31,12 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
       - name: Deploy to Railway
-        uses: railwayapp/railway-action@v2
-        with:
-          service: ${{ secrets.RAILWAY_SERVICE_NAME }}
-          token: ${{ secrets.RAILWAY_TOKEN }}
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway up --service ${{ secrets.RAILWAY_SERVICE_NAME }} --detach
 
 
