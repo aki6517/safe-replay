@@ -1,4 +1,4 @@
-name: Deploy to Railway
+name: CI
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:  # 手動実行用
 
 jobs:
-  deploy:
+  ci:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -31,12 +31,8 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Install Railway CLI
-        run: npm install -g @railway/cli
-
-      - name: Deploy to Railway
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway up --service ${{ secrets.RAILWAY_SERVICE_NAME }} --detach
+  # 注意: RailwayはGitHubリポジトリと連携している場合、
+  # 自動的にデプロイするため、このジョブは不要です。
+  # Railwayの自動デプロイ機能を使用してください。
 
 
