@@ -1,6 +1,6 @@
 # Dependencies
 node_modules/
-package-lock.json
+# package-lock.json はリポジトリに含める（依存関係のバージョン固定のため）
 yarn.lock
 pnpm-lock.yaml
 
@@ -40,4 +40,7 @@ temp/
 credentials.json
 token.json
 client_secret*.json
+
+
+
 
