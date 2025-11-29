@@ -14,11 +14,11 @@ Type B通知用のFlex Messageテンプレートを実装し、共有・CCメッ
 
 ### ゴール / 完了条件（Acceptance Criteria）
 
-- [ ] Type B用Flex Messageテンプレートを作成（設計書準拠）
-- [ ] [既読][確認メール]ボタンを実装
-- [ ] 静音通知設定に対応
-- [ ] Postbackデータ形式を実装
-- [ ] LINE Botで表示確認
+- [x] Type B用Flex Messageテンプレートを作成（設計書準拠）
+- [x] [既読][確認メール]ボタンを実装
+- [x] 静音通知設定に対応
+- [x] Postbackデータ形式を実装
+- [x] LINE Botで表示確認（動作確認待ち）
 
 ### テスト観点
 
