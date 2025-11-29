@@ -12,8 +12,8 @@ AI自動返信アシスタント「SafeReply」の開発を進めています。
 技術スタック: Node.js + TypeScript + Hono + Supabase + Upstash Redis + Railway
 
 ## 現在の進捗
-- Issue #1〜#12: 完了
-- Issue #13: ファイル解析モジュール実装（次の作業）
+- Issue #1〜#13: 完了
+- Issue #14: PowerPoint解析実装（次の作業）
 
 ## 重要なファイル
 - プロジェクトルール: `docs/PROJECT-RULES.md`（必ず参照すること）
@@ -22,9 +22,9 @@ AI自動返信アシスタント「SafeReply」の開発を進めています。
 - 設計ドキュメント: `/Users/nishiyamaakihiro/Documents/01_requirements.md` など
 
 ## 次の作業
-Issue #13: ファイル解析モジュール実装（PDF/DOCX/XLSX）
-- PDF、DOCX、XLSXファイルからテキストを抽出する機能の実装
-- 詳細は `docs/issues/12-file-parser-pdf-docx-xlsx.md` を参照
+Issue #14: PowerPoint解析実装（発表者ノート抽出）
+- PPTXファイルからスライドテキストと発表者ノートを抽出する機能の実装
+- 詳細は `docs/issues/13-powerpoint-parser-pptx.md` を参照
 
 ## 作業ルール
 1. `docs/PROJECT-RULES.md`を必ず参照し、ルールを厳守すること

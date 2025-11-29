@@ -132,17 +132,27 @@ ADHD特性による「連絡業務への心理的抵抗感・先延ばし」を�
   - ✅ テストスクリプトの作成（`scripts/test-ai-processing.ts`）
   - ✅ テスト用メッセージで動作確認完了（`gpt-5.1-2025-11-13`で正常動作）
 
+- ✅ **Issue #13**: ファイル解析モジュール実装（PDF/DOCX/XLSX）（完了）
+  - ✅ PDF解析の実装（`src/parsers/pdf.ts`）
+  - ✅ DOCX解析の実装（`src/parsers/docx.ts`）
+  - ✅ XLSX解析の実装（`src/parsers/xlsx.ts`）
+  - ✅ 統合インターフェースの実装（`src/parsers/index.ts`）
+  - ✅ ファイルサイズ10MB制限の実装
+  - ✅ エラーハンドリングの実装
+  - ✅ テストスクリプトの作成（`scripts/test-file-parsers.ts`）
+  - ✅ 各形式のサンプルファイルで動作確認完了（PDF、DOCX、XLSXすべて成功）
+
 ---
 
 ## 🎯 次の作業
 
-### Issue #13: ファイル解析モジュール実装（PDF/DOCX/XLSX）
+### Issue #14: PowerPoint解析実装（発表者ノート抽出）
 
-**ファイル**: `docs/issues/12-file-parser-pdf-docx-xlsx.md`
+**ファイル**: `docs/issues/13-powerpoint-parser-pptx.md`
 
-**概要**: PDF、DOCX、XLSXファイルからテキストを抽出する機能を実装
+**概要**: PPTXファイルからスライドテキストと発表者ノートを抽出する機能を実装
 
-**依存**: Issue #3
+**依存**: Issue #13
 
 **ラベル**: `backend`, `parser`
 
