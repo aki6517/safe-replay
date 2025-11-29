@@ -83,19 +83,32 @@ ADHD特性による「連絡業務への心理的抵抗感・先延ばし」を�
   - ✅ GitHub Secrets設定完了（`API_BASE_URL`、`SERVICE_KEY`）
   - ✅ ワークフローが正常に動作することを確認
 
+- ✅ **Issue #8**: LINE Webhook基本実装（完了）
+  - ✅ `POST /api/v1/line/webhook`エンドポイントを実装
+  - ✅ LINE署名検証ロジックを実装
+  - ✅ イベントタイプ（message, postback, follow, unfollow）のルーティング
+  - ✅ 型定義を追加（`src/types/line-webhook.ts`）
+  - ✅ エラーハンドリングを実装
+  - ✅ Webhook URL設定完了、テストメッセージ送受信確認完了
+
+- ✅ **Issue #9**: LINE Bot基本応答実装（完了）
+  - ✅ テキストメッセージ送信関数を実装（`sendTextMessage`, `replyTextMessage`）
+  - ✅ followイベント時のウェルカムメッセージを実装
+  - ✅ エラーハンドリングを実装
+
 ---
 
 ## 🎯 次の作業
 
-### Issue #8: LINE Webhook基本実装
+### Issue #10: Gmail API連携
 
-**ファイル**: `docs/issues/8-line-webhook-basic.md`
+**ファイル**: `docs/issues/10-gmail-api-integration.md`
 
-**概要**: LINE Messaging APIのWebhookエンドポイントと署名検証を実装
+**概要**: Gmail APIを使用して未読メールを取得する機能を実装
 
-**依存**: Issue #4, #3
+**依存**: Issue #3, #4
 
-**ラベル**: `backend`, `line`
+**ラベル**: `backend`, `gmail`
 
 ---
 
