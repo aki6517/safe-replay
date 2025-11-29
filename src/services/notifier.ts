@@ -62,6 +62,11 @@ export async function sendLineNotification(
           draft
         });
         
+        // デバッグ用: Flex MessageのJSONを出力（開発環境のみ）
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[Flex Message JSON]', JSON.stringify(flexMessage, null, 2));
+        }
+        
         success = await sendFlexMessage(userId, flexMessage);
       } else {
         // ドラフトがない場合はテキストメッセージを送信

@@ -14,11 +14,11 @@ Type A通知用のFlex Messageテンプレートを実装し、リッチなUIで
 
 ### ゴール / 完了条件（Acceptance Criteria）
 
-- [ ] Type A用Flex Messageテンプレートを作成（設計書準拠）
-- [ ] 返信案プレビューを表示
-- [ ] [送信][修正][断る]ボタンを実装
-- [ ] Postbackデータ形式を実装
-- [ ] LINE Botで表示確認
+- [x] Type A用Flex Messageテンプレートを作成（設計書準拠）
+- [x] 返信案プレビューを表示
+- [x] [送信][修正][断る]ボタンを実装
+- [x] Postbackデータ形式を実装
+- [ ] LINE Botで表示確認（動作確認待ち）
 
 ### テスト観点
 

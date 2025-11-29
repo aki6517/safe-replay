@@ -28,3 +28,4 @@ declare module 'pptx-parser' {
   export function parse(buffer: Buffer): Promise<PPTXPresentation>;
 }
 
+
