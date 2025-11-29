@@ -309,6 +309,15 @@ npm run format
 
 ---
 
+## 🔐 セキュリティ対応（2025年11月29日）
+
+### GitHub Secret Scanningアラート対応
+- ✅ Supabase Legacy API Keysを新しいAPI Keysシステムに移行
+  - `SUPABASE_SERVICE_ROLE_KEY`: Legacy JWT → 新しいSecret Key (`sb_secret_...`)
+  - `SUPABASE_ANON_KEY`: Legacy JWT → 新しいPublishable Key (`sb_publishable_...`)
+- ✅ 動作確認完了（データベース接続、LINE通知サービス）
+- 📄 詳細は `docs/SECURITY-KEYS-MIGRATION.md` を参照
+
 ## 📞 不明点・確認事項
 
 - Railwayプロジェクトの作成状況（Issue #6の手作業部分）
@@ -317,7 +326,7 @@ npm run format
 
 ---
 
-**最終更新**: 2025-01-XX  
-**現在の進捗**: Issue #7進行中（フェーズ1: Walking Skeleton）
+**最終更新**: 2025-11-29  
+**現在の進捗**: Issue #19完了、Issue #20準備中（フェーズ2: コア機能実装）
 
 
