@@ -1,7 +1,7 @@
 /**
  * LINE Messaging API サービス
  */
-import { Client, ClientConfig, TextMessage } from '@line/bot-sdk';
+import { Client, ClientConfig, TextMessage, FlexMessage } from '@line/bot-sdk';
 
 // 開発環境では環境変数が設定されていない場合でもエラーを投げない
 let lineClient: Client | null = null;
@@ -104,6 +104,29 @@ export async function replyTextMessage(replyToken: string, text: string): Promis
     return true;
   } catch (error) {
     console.error('LINEメッセージ返信エラー:', error);
+    return false;
+  }
+}
+
+/**
+ * Flex Messageを送信（プッシュメッセージ）
+ * 
+ * @param userId - LINE User ID
+ * @param flexMessage - Flex Messageオブジェクト
+ * @returns 成功時true、失敗時false
+ */
+export async function sendFlexMessage(userId: string, flexMessage: FlexMessage): Promise<boolean> {
+  if (!isLineClientAvailable()) {
+    console.error('LINE Messaging API credentials not configured');
+    return false;
+  }
+
+  try {
+    const client = getLineClient();
+    await client.pushMessage(userId, flexMessage);
+    return true;
+  } catch (error) {
+    console.error('LINE Flex Message送信エラー:', error);
     return false;
   }
 }

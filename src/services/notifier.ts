@@ -45,36 +45,48 @@ export async function sendLineNotification(
   }
 
   try {
-    // 通知メッセージを構築
-    let notificationText = '';
+    let success = false;
     
     if (triageType === 'A') {
-      // Type A: 件名 + 本文 + 返信案
-      notificationText = `【重要メッセージ】\n\n`;
-      if (message.subject) {
-        notificationText += `件名: ${message.subject}\n`;
-      }
-      notificationText += `送信元: ${message.sender} (${message.source})\n\n`;
-      notificationText += `--- メッセージ内容 ---\n${message.body}\n\n`;
+      // Type A: Flex Messageを使用
       if (draft) {
-        notificationText += `--- 返信案 ---\n${draft}`;
+        const { createTypeAFlexMessage } = await import('./flex-messages/type-a');
+        const { sendFlexMessage } = await import('./line');
+        
+        const flexMessage = createTypeAFlexMessage({
+          messageId,
+          subject: message.subject,
+          body: message.body,
+          sender: message.sender,
+          source: message.source,
+          draft
+        });
+        
+        success = await sendFlexMessage(userId, flexMessage);
+      } else {
+        // ドラフトがない場合はテキストメッセージを送信
+        let notificationText = `【重要メッセージ】\n\n`;
+        if (message.subject) {
+          notificationText += `件名: ${message.subject}\n`;
+        }
+        notificationText += `送信元: ${message.sender} (${message.source})\n\n`;
+        notificationText += `--- メッセージ内容 ---\n${message.body}`;
+        success = await sendTextMessage(userId, notificationText);
       }
     } else if (triageType === 'B') {
-      // Type B: 件名 + 本文のみ
-      notificationText = `【メッセージ受信】\n\n`;
+      // Type B: テキストメッセージのみ（Flex MessageはIssue #20で実装）
+      let notificationText = `【メッセージ受信】\n\n`;
       if (message.subject) {
         notificationText += `件名: ${message.subject}\n`;
       }
       notificationText += `送信元: ${message.sender} (${message.source})\n\n`;
       notificationText += `--- メッセージ内容 ---\n${message.body}`;
+      success = await sendTextMessage(userId, notificationText);
     }
-
-    // LINEメッセージを送信
-    const success = await sendTextMessage(userId, notificationText);
     
     if (success) {
       // DBに通知履歴を記録
-      await recordNotification(messageId, triageType);
+      await recordNotification(messageId);
       console.log('[通知送信成功]', {
         userId,
         messageId,
@@ -105,22 +117,25 @@ export async function sendLineNotification(
  * 通知履歴をDBに記録
  * 
  * @param messageId - メッセージID
- * @param triageType - トリアージタイプ
  */
 async function recordNotification(
-  messageId: string,
-  triageType: TriageType
+  messageId: string
 ): Promise<void> {
   try {
     const supabase = getSupabase();
     
-    const { error } = await supabase
+    // Supabase型定義の問題を回避（messagesテーブルのupdate型が正しく推論されない）
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
+    const updateQuery: any = (supabase as any)
       .from('messages')
       .update({
         status: 'notified',
         notified_at: new Date().toISOString()
       })
       .eq('id', messageId);
+    
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const { error } = await updateQuery;
 
     if (error) {
       console.error('[通知履歴記録エラー]', {
