@@ -12,7 +12,8 @@
     "format": "prettier --write \"src/**/*.ts\"",
     "get-gmail-refresh-token": "tsx scripts/get-gmail-refresh-token.ts",
     "test-gmail-api": "tsx scripts/test-gmail-api.ts",
-    "test-chatwork-api": "tsx scripts/test-chatwork-api.ts"
+    "test-chatwork-api": "tsx scripts/test-chatwork-api.ts",
+    "test-ai-processing": "tsx scripts/test-ai-processing.ts"
   },
   "keywords": [
     "ai",
