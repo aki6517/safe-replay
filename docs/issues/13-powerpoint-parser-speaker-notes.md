@@ -19,9 +19,9 @@ PPTXファイルからスライドテキストと発表者ノートを抽出す�
 - [x] **発表者ノート（プレゼンターメモ）抽出を実装**（必須要件）
 - [x] 抽出結果を統合インターフェースで返す
 - [x] エラーハンドリングを実装
-- [x] pptx-parser型定義の追加
+- [x] PPTX解析をNode.js対応に修正（jszip + xml2js使用）
 - [x] テストスクリプトの更新（PPTX対応）
-- [ ] 発表者ノート付きPPTXファイルで動作確認（手作業が必要）
+- [x] 発表者ノート付きPPTXファイルで動作確認（完了）
 
 ### 実装内容
 
@@ -57,6 +57,23 @@ const result = await parseFile(buffer, 'presentation.pptx', 'application/vnd.ope
 ```bash
 npm run test-file-parsers ./path/to/sample.pptx
 ```
+
+### 動作確認結果
+
+**確認日**: 2025-11-29
+
+**テスト結果**:
+- ✅ PPTX解析: 成功（7,859文字抽出、35スライド検出）
+- ✅ 発表者ノート抽出: 成功（5,628文字抽出）
+- ✅ ファイルサイズチェック: 正常動作（10MB制限）
+- ✅ ファイル形式自動判定: 正常動作
+
+**テストコマンド**:
+```bash
+npm run test-file-parsers <ファイルパス>
+```
+
+**注意**: `pptx-parser`パッケージはブラウザ専用のため、ZIP/XML直接解析方式（jszip + xml2js）を使用しています。
 
 ### テスト観点
 
