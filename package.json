@@ -14,7 +14,8 @@
     "test-gmail-api": "tsx scripts/test-gmail-api.ts",
     "test-chatwork-api": "tsx scripts/test-chatwork-api.ts",
     "test-ai-processing": "tsx scripts/test-ai-processing.ts",
-    "test-file-parsers": "tsx scripts/test-file-parsers.ts"
+    "test-file-parsers": "tsx scripts/test-file-parsers.ts",
+    "test-line-notification": "tsx scripts/test-line-notification.ts"
   },
   "keywords": [
     "ai",
