@@ -3,7 +3,7 @@
  */
 import { Hono } from 'hono';
 import crypto from 'crypto';
-import { isLineClientAvailable } from '../services/line';
+import { isLineClientAvailable, replyTextMessage } from '../services/line';
 import { processForwardedMessage } from '../services/message-processor';
 import { handleLineAction } from '../services/action-handler';
 import type {
@@ -95,15 +95,20 @@ lineWebhook.post('/webhook', async (c) => {
         const data = postbackEvent.postback?.data || '';
         await handleLineAction(userId, data);
       } else if (eventType === 'follow') {
-        // ユーザー登録
+        // ユーザー登録とウェルカムメッセージ
         console.log('User followed:', userId);
-        // TODO: ユーザー登録処理（Issue #8の基本実装ではログ出力のみ）
-        // 型チェック用: event as FollowEvent
+        
+        // ウェルカムメッセージを送信
+        if (event.replyToken) {
+          const welcomeMessage = 'SafeReplyへようこそ！\n\nメッセージを転送すると、AIが自動で返信ドラフトを作成します。';
+          await replyTextMessage(event.replyToken, welcomeMessage);
+        }
+        
+        // TODO: ユーザー登録処理（データベースへの登録は後で実装）
       } else if (eventType === 'unfollow') {
         // ユーザー無効化
         console.log('User unfollowed:', userId);
-        // TODO: ユーザー無効化処理（Issue #8の基本実装ではログ出力のみ）
-        // 型チェック用: event as UnfollowEvent
+        // TODO: ユーザー無効化処理（データベースでの無効化は後で実装）
       }
     }
 

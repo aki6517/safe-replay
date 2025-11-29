@@ -19,8 +19,8 @@ LINE Messaging APIのWebhookエンドポイントと署名検証を実装し、L
 - [x] イベントタイプ（message, postback, follow, unfollow）のルーティング
 - [x] エラーハンドリングを実装
 - [x] 型定義の追加（`src/types/line-webhook.ts`）
-- [ ] LINE Developer ConsoleでWebhook URLを設定できる（手作業が必要）
-- [ ] テストメッセージを送信して受信できる（手作業が必要）
+- [x] LINE Developer ConsoleでWebhook URLを設定できる（完了）
+- [x] テストメッセージを送信して受信できる（完了）
 
 ### 実装内容
 
@@ -69,13 +69,12 @@ LINE Messaging APIのWebhookエンドポイントと署名検証を実装し、L
 4. **Webhookの利用を有効化**
    - 「Webhookの利用」を「利用する」に設定
    - 「検証」ボタンをクリックして、Webhook URLが正しく設定されているか確認
+   - 検証が成功すると「Webhook URLの検証に成功しました」と表示されます
 
-5. **Webhookイベントの設定**
-   - 「Webhookイベント」セクションで、必要なイベントを有効化：
-     - `message` - メッセージイベント
-     - `postback` - ポストバックイベント
-     - `follow` - フォローイベント
-     - `unfollow` - アンフォローイベント
+**注意**: 
+- Webhookイベントの種類（`message`, `postback`, `follow`, `unfollow`など）は、LINEプラットフォームが自動的に送信するため、LINE Developer Consoleで個別に設定する必要はありません
+- 実装したコードで、受信したイベントの種類に応じて適切に処理するように実装されています
+- 参考: [LINE Developers - メッセージ（Webhook）を受信する](https://developers.line.biz/ja/docs/messaging-api/receiving-messages/#webhook-event-in-one-on-one-talk-or-group-chat)
 
 ### テスト観点
 
@@ -85,7 +84,16 @@ LINE Messaging APIのWebhookエンドポイントと署名検証を実装し、L
 
 ### 完了日
 
-2025-11-27
+2025-11-29
+
+### 完了時の状況
+
+- ✅ Webhook URL設定完了: `https://safe-replay-production.up.railway.app/api/v1/line/webhook`
+- ✅ Webhookの利用を有効化
+- ✅ テストメッセージ送信・受信確認完了
+- ✅ RailwayログでWebhookイベント受信を確認
+- ✅ メッセージ処理が正常に実行されることを確認
+- ⚠️ 注意: LINE Developer Consoleの「応答メッセージ」は無効に推奨（Issue #9でプログラムから返信を実装するため）
 
 
 
