@@ -48,15 +48,18 @@ npm run test-line-notification
 
 **テスト結果**:
 - ✅ LINE通知サービス実装完了
-- ✅ Type A通知: テキスト + 返信案の送信成功
-- ✅ Type B通知: テキストのみの送信成功
+- ✅ Type A通知: テキスト + 返信案の送信成功（実際にLINE Botから通知受信確認）
+- ✅ Type B通知: テキストのみの送信成功（実際にLINE Botから通知受信確認）
 - ✅ Type C通知: 通知スキップ（ログのみ）正常動作
 - ✅ 通知履歴のDB記録: 正常動作（`notified_at`更新、`status`更新）
+- ✅ 環境変数の遅延読み込み対応: LINE/Supabaseクライアントの遅延初期化を実装
 
 **テストコマンド**:
 ```bash
 npm run test-line-notification
 ```
+
+**注意**: テストメッセージIDがダミーUUIDの場合、DB記録は失敗しますが、実際のメッセージIDを使用すれば正常に動作します。
 
 
 

@@ -11,11 +11,15 @@ async function main() {
   console.log('=== LINE通知サービス テスト ===\n');
 
   // 環境変数チェック
-  const lineUserId = process.env.LINE_TEST_USER_ID;
+  // LINE_TEST_USER_IDが設定されていない場合は、LINE_ALLOWED_USER_IDSの最初のIDを使用
+  const lineUserId = process.env.LINE_TEST_USER_ID || 
+                     (process.env.LINE_ALLOWED_USER_IDS?.split(',')[0]?.trim());
   if (!lineUserId) {
-    console.error('❌ LINE_TEST_USER_ID環境変数が設定されていません');
+    console.error('❌ LINE_TEST_USER_IDまたはLINE_ALLOWED_USER_IDS環境変数が設定されていません');
     console.log('\n設定方法:');
     console.log('LINE_TEST_USER_ID=your_line_user_id');
+    console.log('または');
+    console.log('LINE_ALLOWED_USER_IDS=user_id1,user_id2,...');
     process.exit(1);
   }
 

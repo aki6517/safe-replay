@@ -3,31 +3,51 @@
  */
 import { Client, ClientConfig, TextMessage } from '@line/bot-sdk';
 
-const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-const channelSecret = process.env.LINE_CHANNEL_SECRET;
-
 // 開発環境では環境変数が設定されていない場合でもエラーを投げない
 let lineClient: Client | null = null;
 
-if (channelAccessToken && channelSecret) {
-  const config: ClientConfig = {
-    channelAccessToken,
-    channelSecret
-  };
-  lineClient = new Client(config);
-} else {
-  console.warn('⚠️  LINE Messaging API credentials not configured');
+/**
+ * LINEクライアントを初期化（遅延初期化）
+ */
+function initializeLineClient(): void {
+  if (lineClient !== null) {
+    return; // 既に初期化済み
+  }
+
+  const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
+  const channelSecret = process.env.LINE_CHANNEL_SECRET;
+
+  if (channelAccessToken && channelSecret) {
+    const config: ClientConfig = {
+      channelAccessToken,
+      channelSecret
+    };
+    lineClient = new Client(config);
+  } else {
+    console.warn('⚠️  LINE Messaging API credentials not configured');
+  }
 }
+
+// モジュール読み込み時に一度初期化を試みる
+initializeLineClient();
 
 export { lineClient };
 
 // クライアントが利用可能かチェックする関数
 export function isLineClientAvailable(): boolean {
+  // 再初期化を試みる（環境変数が後から設定された場合に対応）
+  if (lineClient === null) {
+    initializeLineClient();
+  }
   return lineClient !== null;
 }
 
 // クライアントを取得（利用可能でない場合はエラー）
 export function getLineClient(): Client {
+  // 再初期化を試みる（環境変数が後から設定された場合に対応）
+  if (lineClient === null) {
+    initializeLineClient();
+  }
   if (!lineClient) {
     throw new Error('LINE Messaging API credentials not configured');
   }
