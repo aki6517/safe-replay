@@ -120,19 +120,31 @@ ADHD特性による「連絡業務への心理的抵抗感・先延ばし」を�
   - ✅ セットアップガイドの作成（`docs/CHATWORK-API-SETUP.md`）
   - ✅ テスト用Chatworkアカウントで動作確認完了（181件のルーム取得、10件の自分宛メッセージ取得成功）
 
+- ✅ **Issue #12**: AI基本処理実装（完了）
+  - ✅ AI Provider Interfaceの実装（`src/ai/provider.ts`）
+  - ✅ OpenAI Providerの実装（`src/ai/openai.ts`）
+  - ✅ プロンプトテンプレートの作成（`src/ai/prompts/index.ts`）
+  - ✅ トリアージ処理の実装（`src/ai/triage.ts`）
+  - ✅ ドラフト生成処理の実装（`src/ai/draft.ts`）
+  - ✅ エラーハンドリングとリトライロジックの実装
+  - ✅ gpt-5系モデル対応（`max_completion_tokens`対応）
+  - ✅ `AI_PROVIDER`環境変数のサポート
+  - ✅ テストスクリプトの作成（`scripts/test-ai-processing.ts`）
+  - ✅ テスト用メッセージで動作確認完了（`gpt-5.1-2025-11-13`で正常動作）
+
 ---
 
 ## 🎯 次の作業
 
-### Issue #12: AI基本処理実装
+### Issue #13: ファイル解析モジュール実装（PDF/DOCX/XLSX）
 
-**ファイル**: `docs/issues/12-ai-basic-processing.md`
+**ファイル**: `docs/issues/12-file-parser-pdf-docx-xlsx.md`
 
-**概要**: OpenAI APIを使用したメッセージのトリアージと返信ドラフト生成機能を実装
+**概要**: PDF、DOCX、XLSXファイルからテキストを抽出する機能を実装
 
-**依存**: Issue #11
+**依存**: Issue #3
 
-**ラベル**: `backend`, `ai`
+**ラベル**: `backend`, `parser`
 
 ---
 

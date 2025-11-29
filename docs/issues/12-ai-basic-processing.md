@@ -23,7 +23,7 @@ OpenAI APIを使用したメッセージのトリアージと返信ドラフト�
 - [x] レスポンスパース処理を実装
 - [x] エラーハンドリングとリトライロジックを実装
 - [x] テストスクリプトの作成（`scripts/test-ai-processing.ts`）
-- [ ] テスト用のメッセージで動作確認（手作業が必要）
+- [x] テスト用のメッセージで動作確認（完了）
 
 ### テストスクリプト
 
@@ -34,7 +34,25 @@ npm run test-ai-processing
 
 **必要な環境変数**:
 - `OPENAI_API_KEY` (必須)
-- `OPENAI_MODEL` (オプション、デフォルト: `gpt-4o-mini`)
+- `OPENAI_MODEL` または `AI_PROVIDER` (オプション、デフォルト: `gpt-4o-mini`)
+  - `AI_PROVIDER`が`gpt-`で始まる場合はモデル名として使用されます
+  - 例: `AI_PROVIDER=gpt-5.1-2025-11-13`
+
+### 動作確認結果
+
+**確認日**: 2025-11-29
+
+**テスト結果**:
+- ✅ 環境変数の設定確認: 成功（`AI_PROVIDER=gpt-5.1-2025-11-13`を使用）
+- ✅ OpenAI APIクライアントの初期化: 成功
+- ✅ トリアージ処理: 成功（Type A/B/C分類が正しく動作）
+- ✅ ドラフト生成処理: 成功（適切な返信ドラフトが生成される）
+- ✅ gpt-5系モデル対応: 成功（`max_completion_tokens`を使用）
+
+**テストコマンド**:
+```bash
+npm run test-ai-processing
+```
 
 ### テスト観点
 
