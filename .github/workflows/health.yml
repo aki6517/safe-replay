@@ -22,3 +22,6 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.SERVICE_KEY }}" \
             -d '{"type": "system_down"}'
 
+
+
+

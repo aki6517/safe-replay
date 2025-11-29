@@ -25,3 +25,6 @@ Type B通知用のFlex Messageテンプレートを実装し、共有・CCメッ
 - E2E: LINE BotでFlex Messageが正しく表示されることを確認
 - 検証方法: Type B通知を送信し、Flex Messageが正しく表示され、ボタンが動作することを確認
 
+
+
+

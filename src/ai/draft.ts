@@ -23,3 +23,6 @@ export async function generateDraft(
   return '返信ドラフト（未実装）';
 }
 
+
+
+
