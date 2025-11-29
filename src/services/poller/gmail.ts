@@ -5,10 +5,14 @@ import {
   getUnreadMessages,
   extractMessageBody,
   extractMessageHeaders,
+  getThreadHistory,
   isGmailClientAvailable
 } from '../gmail';
 import { redis, isRedisAvailable } from '../../db/redis';
-import { supabase } from '../../db/client';
+import { getSupabase } from '../../db/client';
+import { triageMessage } from '../../ai/triage';
+import { generateDraft } from '../../ai/draft';
+import { sendLineNotification } from '../notifier';
 
 /**
  * 処理済みメッセージIDをRedisから取得
@@ -119,8 +123,9 @@ export async function pollGmail(
         details.push(messageDetail);
 
         // データベースに保存（userIdが指定されている場合）
-        if (userId && supabase) {
+        if (userId && getSupabase()) {
           try {
+            const supabase = getSupabase();
             const insertData = {
               user_id: userId,
               source_type: 'gmail' as const,
@@ -139,7 +144,7 @@ export async function pollGmail(
               } as Record<string, unknown>
             };
             // 型アサーションを使用してSupabaseの型エラーを回避
-            const { error: dbError } = await (supabase.from('messages') as any).insert(insertData);
+            const { data: insertedData, error: dbError } = await (supabase.from('messages') as any).insert(insertData).select().single();
 
             if (dbError) {
               // 重複エラーは無視（既に処理済み）
@@ -151,8 +156,92 @@ export async function pollGmail(
               }
             } else {
               messagesNew++;
-              // 処理済みとしてマーク
-              await markMessageAsProcessed(userId, message.id);
+              const messageId = insertedData?.id;
+
+              if (messageId) {
+                // スレッド履歴を取得（コンテキスト用）
+                let threadContext = '';
+                if (message.threadId) {
+                  try {
+                    const threadMessages = await getThreadHistory(message.threadId);
+                    // 現在のメッセージ以外の過去5件を取得
+                    const previousMessages = threadMessages
+                      .filter(m => m.id !== message.id)
+                      .slice(-5);
+                    
+                    threadContext = previousMessages
+                      .map(m => {
+                        const h = extractMessageHeaders(m);
+                        const b = extractMessageBody(m);
+                        return `【${h.from || 'Unknown'}】${b.substring(0, 200)}`;
+                      })
+                      .join('\n\n');
+                  } catch (threadError: any) {
+                    console.warn(`Failed to get thread history for ${message.threadId}:`, threadError.message);
+                  }
+                }
+
+                // AIトリアージを実行
+                try {
+                  const triageResult = await triageMessage(
+                    headers.subject || '',
+                    body,
+                    threadContext || undefined
+                  );
+
+                  // トリアージ結果をDBに更新
+                  await (supabase.from('messages') as any).update({
+                    triage_type: triageResult.type,
+                    triage_reason: triageResult.reason,
+                    priority_score: triageResult.priority_score,
+                    ai_analysis: {
+                      confidence: triageResult.confidence,
+                      details: triageResult.details
+                    } as Record<string, unknown>
+                  }).eq('id', messageId);
+
+                  // LINE User IDを取得（環境変数から、またはuserIdをそのまま使用）
+                  const lineUserId = process.env.LINE_ALLOWED_USER_IDS?.split(',')[0]?.trim() || userId;
+
+                  // Type Aの場合はドラフト生成
+                  let draft: string | undefined;
+                  if (triageResult.type === 'A') {
+                    try {
+                      draft = await generateDraft(
+                        headers.subject || '',
+                        body,
+                        triageResult.type,
+                        threadContext || undefined
+                      );
+                    } catch (draftError: any) {
+                      console.warn(`Failed to generate draft for message ${message.id}:`, draftError.message);
+                    }
+                  }
+
+                  // LINE通知を送信
+                  try {
+                    await sendLineNotification(
+                      lineUserId,
+                      messageId,
+                      triageResult.type,
+                      {
+                        subject: headers.subject,
+                        body: body.substring(0, 500), // 最初の500文字のみ
+                        sender: headers.from || 'Unknown',
+                        source: 'Gmail'
+                      },
+                      draft
+                    );
+                  } catch (notifyError: any) {
+                    errors.push(`Failed to send notification for message ${message.id}: ${notifyError.message}`);
+                  }
+                } catch (triageError: any) {
+                  errors.push(`Failed to triage message ${message.id}: ${triageError.message}`);
+                }
+
+                // 処理済みとしてマーク
+                await markMessageAsProcessed(userId, message.id);
+              }
             }
           } catch (dbError: any) {
             errors.push(`Database error for message ${message.id}: ${dbError.message}`);
