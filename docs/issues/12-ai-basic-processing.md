@@ -35,8 +35,9 @@ npm run test-ai-processing
 **必要な環境変数**:
 - `OPENAI_API_KEY` (必須)
 - `OPENAI_MODEL` または `AI_PROVIDER` (オプション、デフォルト: `gpt-4o-mini`)
-  - `AI_PROVIDER`が`gpt-`で始まる場合はモデル名として使用されます
-  - 例: `AI_PROVIDER=gpt-5.1-2025-11-13`
+  - **推奨**: `AI_PROVIDER=gpt-5.1-2025-11-13` のように設定すると、`gpt-`で始まる場合は自動的にモデル名として使用されます
+  - または `OPENAI_MODEL=gpt-5.1-2025-11-13` のように直接モデル名を指定することも可能です
+  - どちらも設定されていない場合は、デフォルトで`gpt-4o-mini`が使用されます
 
 ### 動作確認結果
 
@@ -78,7 +79,11 @@ interface AIProvider {
 
 #### OpenAI実装
 
-- モデル: `gpt-4o-mini`（環境変数で設定可能）
+- モデル: 環境変数で設定可能
+  - `OPENAI_MODEL`環境変数でモデル名を指定
+  - または`AI_PROVIDER`環境変数が`gpt-`で始まる場合はモデル名として使用
+  - デフォルト: `gpt-4o-mini`
+  - 例: `AI_PROVIDER=gpt-5.1-2025-11-13` または `OPENAI_MODEL=gpt-5.1-2025-11-13`
 - トリアージ: temperature=0.3（一貫性重視）
 - ドラフト生成: temperature=0.7（創造性重視）
 
