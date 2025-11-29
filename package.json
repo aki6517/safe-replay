@@ -11,7 +11,8 @@
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "get-gmail-refresh-token": "tsx scripts/get-gmail-refresh-token.ts",
-    "test-gmail-api": "tsx scripts/test-gmail-api.ts"
+    "test-gmail-api": "tsx scripts/test-gmail-api.ts",
+    "test-chatwork-api": "tsx scripts/test-chatwork-api.ts"
   },
   "keywords": [
     "ai",

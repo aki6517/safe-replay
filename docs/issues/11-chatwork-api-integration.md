@@ -15,13 +15,22 @@ Chatwork APIを使用した自分宛メッセージ取得機能を実装し、Ch
 
 ### ゴール / 完了条件（Acceptance Criteria）
 
-- [ ] `src/services/chatwork.ts`でChatwork APIクライアントを実装
-- [ ] APIトークン認証を実装
-- [ ] ルーム一覧取得機能を実装
-- [ ] 自分宛（To/Direct）メッセージ取得機能を実装
-- [ ] 無限ループ防止（自身のBot発言除外）を実装
-- [ ] エラーハンドリングを実装
-- [ ] テスト用のChatworkアカウントで動作確認
+- [x] `src/services/chatwork.ts`でChatwork APIクライアントを実装
+- [x] APIトークン認証を実装
+- [x] ルーム一覧取得機能を実装
+- [x] 自分宛（To/Direct）メッセージ取得機能を実装
+- [x] 無限ループ防止（自身のBot発言除外）を実装
+- [x] エラーハンドリングを実装
+- [x] ポーリングサービスの更新（`src/services/poller/chatwork.ts`）
+- [x] テストスクリプトの作成（`scripts/test-chatwork-api.ts`）
+- [ ] テスト用のChatworkアカウントで動作確認（手作業が必要）
+
+### セットアップ手順
+
+**詳細なセットアップ手順**: `docs/CHATWORK-API-SETUP.md` を参照してください。
+
+**テストスクリプト**:
+- Chatwork API動作確認: `npm run test-chatwork-api`
 
 ### テスト観点
 
