@@ -25,8 +25,16 @@ async function testAIProcessing() {
   }
 
   console.log('   ✅ OPENAI_API_KEY: ' + apiKey.substring(0, 10) + '...');
-  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
-  console.log('   ✅ OPENAI_MODEL: ' + model);
+  const model = process.env.OPENAI_MODEL || 
+                (process.env.AI_PROVIDER && process.env.AI_PROVIDER.startsWith('gpt-') ? process.env.AI_PROVIDER : null) ||
+                'gpt-4o-mini';
+  console.log('   ✅ 使用モデル: ' + model);
+  if (process.env.AI_PROVIDER) {
+    console.log('   ℹ️  AI_PROVIDER: ' + process.env.AI_PROVIDER);
+  }
+  if (process.env.OPENAI_MODEL) {
+    console.log('   ℹ️  OPENAI_MODEL: ' + process.env.OPENAI_MODEL);
+  }
   console.log('');
 
   // 2. テストメッセージ

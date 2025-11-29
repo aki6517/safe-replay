@@ -22,8 +22,14 @@ export class OpenAIProvider implements AIProvider {
     this.client = new OpenAI({ apiKey });
 
     // デフォルト設定
+    // AI_PROVIDERまたはOPENAI_MODEL環境変数からモデル名を取得
+    // AI_PROVIDERがモデル名として設定されている場合もサポート
+    const modelFromEnv = process.env.OPENAI_MODEL || 
+                        (process.env.AI_PROVIDER && process.env.AI_PROVIDER.startsWith('gpt-') ? process.env.AI_PROVIDER : null) ||
+                        'gpt-4o-mini';
+    
     this.config = {
-      model: config.model || process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      model: config.model || modelFromEnv,
       temperature: config.temperature ?? 0.7,
       maxTokens: config.maxTokens ?? 2000,
       retryAttempts: config.retryAttempts ?? 3,
@@ -88,9 +94,13 @@ export class OpenAIProvider implements AIProvider {
   ): Promise<string> {
     let lastError: Error | null = null;
 
+    // gpt-5系モデルではmax_completion_tokensを使用
+    const isGPT5Model = this.config.model.startsWith('gpt-5') || this.config.model.includes('gpt-5');
+    const maxTokensParam = options.maxTokens ?? this.config.maxTokens;
+
     for (let attempt = 1; attempt <= this.config.retryAttempts; attempt++) {
       try {
-        const response = await this.client.chat.completions.create({
+        const requestParams: any = {
           model: this.config.model,
           messages: [
             {
@@ -102,9 +112,17 @@ export class OpenAIProvider implements AIProvider {
               content: prompt
             }
           ],
-          temperature: options.temperature ?? this.config.temperature,
-          max_tokens: options.maxTokens ?? this.config.maxTokens
-        });
+          temperature: options.temperature ?? this.config.temperature
+        };
+
+        // gpt-5系モデルではmax_completion_tokensを使用
+        if (isGPT5Model) {
+          requestParams.max_completion_tokens = maxTokensParam;
+        } else {
+          requestParams.max_tokens = maxTokensParam;
+        }
+
+        const response = await this.client.chat.completions.create(requestParams);
 
         const content = response.choices[0]?.message?.content;
         if (!content) {

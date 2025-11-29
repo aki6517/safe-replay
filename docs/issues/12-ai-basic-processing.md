@@ -15,14 +15,26 @@ OpenAI APIを使用したメッセージのトリアージと返信ドラフト�
 
 ### ゴール / 完了条件（Acceptance Criteria）
 
-- [ ] `src/ai/provider.ts`で`AIProvider`インターフェースを定義
-- [ ] `src/ai/openai.ts`で`OpenAIProvider`クラスを実装
-- [ ] `src/ai/triage.ts`でトリアージ処理を実装
-- [ ] `src/ai/draft.ts`でドラフト生成処理を実装
-- [ ] プロンプトテンプレート（`src/ai/prompts/`）を作成
-- [ ] レスポンスパース処理を実装
-- [ ] エラーハンドリングとリトライロジックを実装
-- [ ] テスト用のメッセージで動作確認
+- [x] `src/ai/provider.ts`で`AIProvider`インターフェースを定義
+- [x] `src/ai/openai.ts`で`OpenAIProvider`クラスを実装
+- [x] `src/ai/triage.ts`でトリアージ処理を実装
+- [x] `src/ai/draft.ts`でドラフト生成処理を実装
+- [x] プロンプトテンプレート（`src/ai/prompts/`）を作成
+- [x] レスポンスパース処理を実装
+- [x] エラーハンドリングとリトライロジックを実装
+- [x] テストスクリプトの作成（`scripts/test-ai-processing.ts`）
+- [ ] テスト用のメッセージで動作確認（手作業が必要）
+
+### テストスクリプト
+
+**動作確認コマンド**:
+```bash
+npm run test-ai-processing
+```
+
+**必要な環境変数**:
+- `OPENAI_API_KEY` (必須)
+- `OPENAI_MODEL` (オプション、デフォルト: `gpt-4o-mini`)
 
 ### テスト観点
 
