@@ -97,11 +97,29 @@ lineWebhook.post('/webhook', async (c) => {
       } else if (eventType === 'follow') {
         // ユーザー登録とウェルカムメッセージ
         console.log('User followed:', userId);
+        console.log('Follow event details:', JSON.stringify(event, null, 2));
         
         // ウェルカムメッセージを送信
         if (event.replyToken) {
+          console.log('Sending welcome message with replyToken:', event.replyToken);
           const welcomeMessage = 'SafeReplyへようこそ！\n\nメッセージを転送すると、AIが自動で返信ドラフトを作成します。';
-          await replyTextMessage(event.replyToken, welcomeMessage);
+          const success = await replyTextMessage(event.replyToken, welcomeMessage);
+          if (success) {
+            console.log('Welcome message sent successfully');
+          } else {
+            console.error('Failed to send welcome message');
+          }
+        } else {
+          console.warn('No replyToken found in follow event, using push message instead');
+          // replyTokenがない場合はプッシュメッセージを使用
+          const welcomeMessage = 'SafeReplyへようこそ！\n\nメッセージを転送すると、AIが自動で返信ドラフトを作成します。';
+          const { sendTextMessage } = await import('../services/line');
+          const success = await sendTextMessage(userId, welcomeMessage);
+          if (success) {
+            console.log('Welcome message sent via push message');
+          } else {
+            console.error('Failed to send welcome message via push message');
+          }
         }
         
         // TODO: ユーザー登録処理（データベースへの登録は後で実装）
