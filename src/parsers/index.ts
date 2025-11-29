@@ -4,11 +4,12 @@
 import { parsePDF, getPDFMetadata } from './pdf';
 import { parseDOCX, parseDOCXAsHTML } from './docx';
 import { parseXLSX, getXLSXSheetNames } from './xlsx';
+import { parsePPTX, getPPTXSlideCount } from './pptx';
 
 /**
  * サポートされているファイル形式
  */
-export type SupportedFileType = 'pdf' | 'docx' | 'xlsx';
+export type SupportedFileType = 'pdf' | 'docx' | 'xlsx' | 'pptx';
 
 /**
  * ファイル解析結果
@@ -19,6 +20,12 @@ export interface ParseResult {
   metadata?: Record<string, any>;
   pages?: number; // PDFの場合のみ
   sheets?: string[]; // XLSXの場合のみ
+  notes?: string; // PPTXの場合のみ（発表者ノート）
+  slides?: Array<{ // PPTXの場合のみ
+    slideNumber: number;
+    text: string;
+    notes: string;
+  }>;
 }
 
 /**
@@ -38,12 +45,14 @@ export function detectFileType(
   if (ext === 'pdf') return 'pdf';
   if (ext === 'docx') return 'docx';
   if (ext === 'xlsx') return 'xlsx';
+  if (ext === 'pptx') return 'pptx';
 
   // MIMEタイプから判定（拡張子が不明な場合）
   if (mimeType) {
     if (mimeType === 'application/pdf') return 'pdf';
     if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
     if (mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return 'xlsx';
+    if (mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') return 'pptx';
   }
 
   return null;
@@ -109,6 +118,17 @@ export async function parseFile(
       };
     }
 
+    case 'pptx': {
+      const result = await parsePPTX(buffer, maxSizeMB);
+      const slideCount = await getPPTXSlideCount(buffer);
+      return {
+        text: result.text,
+        notes: result.notes,
+        slides: result.slides,
+        pages: slideCount // スライド数をpagesとして返す
+      };
+    }
+
     default:
       throw new Error(`未対応のファイル形式です: ${fileType}`);
   }
@@ -132,4 +152,5 @@ export function isFileSupported(
 export { parsePDF, getPDFMetadata } from './pdf';
 export { parseDOCX, parseDOCXAsHTML } from './docx';
 export { parseXLSX, getXLSXSheetNames } from './xlsx';
+export { parsePPTX, getPPTXSlideCount } from './pptx';
 

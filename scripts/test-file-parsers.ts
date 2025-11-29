@@ -43,7 +43,7 @@ async function testFileParser(filePath: string) {
 
   if (!supported || !fileType) {
     console.error(`❌ エラー: 未対応のファイル形式です: ${filename}`);
-    console.error('   サポートされている形式: PDF (.pdf), DOCX (.docx), XLSX (.xlsx)');
+    console.error('   サポートされている形式: PDF (.pdf), DOCX (.docx), XLSX (.xlsx), PPTX (.pptx)');
     process.exit(1);
   }
 
@@ -136,6 +136,32 @@ async function testFileParser(filePath: string) {
       console.log('');
     }
 
+    // PPTXの場合: 発表者ノートとスライド情報
+    if (result.notes) {
+      const notesLength = result.notes.length;
+      const notesPreview = result.notes.substring(0, 500);
+      console.log(`📝 発表者ノート (${notesLength}文字):`);
+      console.log('─'.repeat(60));
+      console.log(notesPreview);
+      if (notesLength > 500) {
+        console.log(`... (残り ${notesLength - 500}文字)`);
+      }
+      console.log('─'.repeat(60));
+      console.log('');
+    }
+
+    if (result.slides) {
+      console.log(`📑 スライド数: ${result.slides.length}`);
+      if (result.slides.length > 0) {
+        console.log(`   スライド情報（最初の3スライド）:`);
+        for (let i = 0; i < Math.min(result.slides.length, 3); i++) {
+          const slide = result.slides[i];
+          console.log(`   ${slide.slideNumber}: テキスト ${slide.text.length}文字, ノート ${slide.notes.length}文字`);
+        }
+      }
+      console.log('');
+    }
+
     console.log('✅ すべてのテストが成功しました！\n');
   } catch (error: any) {
     console.error(`❌ エラー: ファイル解析に失敗しました: ${error.message}`);
@@ -152,12 +178,13 @@ const filePath = process.argv[2];
 
 if (!filePath) {
   console.error('❌ エラー: ファイルパスが指定されていません');
-  console.error('\n使用方法:');
-  console.error('  npm run test-file-parsers <ファイルパス>');
-  console.error('\n例:');
-  console.error('  npm run test-file-parsers ./test-files/sample.pdf');
-  console.error('  npm run test-file-parsers ./test-files/sample.docx');
-  console.error('  npm run test-file-parsers ./test-files/sample.xlsx');
+    console.error('\n使用方法:');
+    console.error('  npm run test-file-parsers <ファイルパス>');
+    console.error('\n例:');
+    console.error('  npm run test-file-parsers ./test-files/sample.pdf');
+    console.error('  npm run test-file-parsers ./test-files/sample.docx');
+    console.error('  npm run test-file-parsers ./test-files/sample.xlsx');
+    console.error('  npm run test-file-parsers ./test-files/sample.pptx');
   process.exit(1);
 }
 
