@@ -21,7 +21,7 @@ Gmail APIを使用した未読メール取得機能を実装し、Gmailからの
 - [x] スレッド履歴取得機能を実装
 - [x] メッセージ本文抽出機能を実装
 - [x] エラーハンドリングを実装
-- [ ] テスト用のGmailアカウントで動作確認（手作業が必要）
+- [x] テスト用のGmailアカウントで動作確認（完了）
 
 ### テスト観点
 
@@ -77,12 +77,25 @@ Gmail APIを使用した未読メール取得機能を実装し、Gmailからの
 - `GMAIL_CLIENT_SECRET`: Google OAuth 2.0クライアントシークレット
 - `GMAIL_REFRESH_TOKEN`: Gmail API用のリフレッシュトークン
 
-### 次のステップ
+### 動作確認結果
 
-- Google Cloud ConsoleでGmail APIを有効化
-- OAuth 2.0認証情報を取得
-- リフレッシュトークンを取得（手作業が必要）
-- テスト用Gmailアカウントで動作確認
+**確認日**: 2025-11-29
+
+**テスト結果**:
+- ✅ 環境変数の設定確認: 成功
+- ✅ Gmail APIクライアントの初期化: 成功
+- ✅ 未読メールの取得: 成功（5件取得）
+- ✅ メッセージの詳細取得: 成功（From、Subject、Date、本文が正しく取得）
+- ✅ メッセージ本文の抽出: 成功
+
+**テストコマンド**:
+```bash
+npm run test-gmail-api
+```
+
+**詳細なセットアップ手順**: `docs/GMAIL-API-SETUP.md` を参照してください。
+
+**トラブルシューティング**: `docs/GMAIL-OAUTH-TROUBLESHOOTING.md` を参照してください。
 
 
 

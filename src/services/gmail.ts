@@ -4,15 +4,15 @@
 import { google } from 'googleapis';
 import type { gmail_v1 } from 'googleapis';
 
-// 環境変数から認証情報を取得
-const clientId = process.env.GMAIL_CLIENT_ID;
-const clientSecret = process.env.GMAIL_CLIENT_SECRET;
-const refreshToken = process.env.GMAIL_REFRESH_TOKEN;
-
 /**
  * Gmail APIクライアントを初期化
  */
 function createGmailClient(): gmail_v1.Gmail | null {
+  // 環境変数から認証情報を取得（関数内で読み込むことで、dotenv.config()後に確実に読み込まれる）
+  const clientId = process.env.GMAIL_CLIENT_ID;
+  const clientSecret = process.env.GMAIL_CLIENT_SECRET;
+  const refreshToken = process.env.GMAIL_REFRESH_TOKEN;
+
   if (!clientId || !clientSecret || !refreshToken) {
     console.warn('⚠️  Gmail API credentials not configured');
     return null;
