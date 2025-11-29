@@ -51,10 +51,49 @@ async function markMessageAsProcessed(userId: string, messageId: string): Promis
 }
 
 /**
+ * LINE User IDからusersテーブルのUUIDを取得（存在しない場合は作成）
+ */
+async function getOrCreateUser(lineUserId: string): Promise<string | null> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return null;
+  }
+
+  try {
+    // 既存ユーザーを検索
+    const searchResult: any = await supabase
+      .from('users')
+      .select('id')
+      .eq('line_user_id', lineUserId)
+      .single();
+
+    if (searchResult.data && !searchResult.error) {
+      return searchResult.data.id;
+    }
+
+    // ユーザーが存在しない場合は作成
+    const insertResult = await (supabase.from('users') as any).insert({
+      line_user_id: lineUserId,
+      is_active: true
+    }).select('id').single();
+
+    if (insertResult.error || !insertResult.data) {
+      console.error('Failed to create user:', insertResult.error);
+      return null;
+    }
+
+    return insertResult.data.id;
+  } catch (error: any) {
+    console.error('Failed to get or create user:', error);
+    return null;
+  }
+}
+
+/**
  * Gmailポーリング処理
  */
 export async function pollGmail(
-  userId?: string,
+  lineUserId?: string,
   maxResults: number = 50
 ): Promise<{
   summary: {
@@ -89,6 +128,26 @@ export async function pollGmail(
   }
 
   try {
+    // LINE User IDからusersテーブルのUUIDを取得
+    let userId: string | null = null;
+    if (lineUserId) {
+      userId = await getOrCreateUser(lineUserId);
+      if (!userId) {
+        return {
+          summary: {
+            users_processed: 0,
+            messages_fetched: 0,
+            messages_new: 0,
+            messages_skipped: 0,
+            attachments_parsed: 0,
+            errors: ['Failed to get or create user']
+          },
+          details: [],
+          processingTimeMs: Date.now() - startTime
+        };
+      }
+    }
+
     // 未読メールを取得
     const messages = await getUnreadMessages(maxResults);
     let messagesNew = 0;
@@ -200,8 +259,8 @@ export async function pollGmail(
                     } as Record<string, unknown>
                   }).eq('id', messageId);
 
-                  // LINE User IDを取得（環境変数から、またはuserIdをそのまま使用）
-                  const lineUserId = process.env.LINE_ALLOWED_USER_IDS?.split(',')[0]?.trim() || userId;
+                  // LINE User IDを取得（環境変数から、またはlineUserIdをそのまま使用）
+                  const lineUserIdForNotification = process.env.LINE_ALLOWED_USER_IDS?.split(',')[0]?.trim() || lineUserId || '';
 
                   // Type Aの場合はドラフト生成
                   let draft: string | undefined;
@@ -219,21 +278,23 @@ export async function pollGmail(
                   }
 
                   // LINE通知を送信
-                  try {
-                    await sendLineNotification(
-                      lineUserId,
-                      messageId,
-                      triageResult.type,
-                      {
-                        subject: headers.subject,
-                        body: body.substring(0, 500), // 最初の500文字のみ
-                        sender: headers.from || 'Unknown',
-                        source: 'Gmail'
-                      },
-                      draft
-                    );
-                  } catch (notifyError: any) {
-                    errors.push(`Failed to send notification for message ${message.id}: ${notifyError.message}`);
+                  if (lineUserIdForNotification) {
+                    try {
+                      await sendLineNotification(
+                        lineUserIdForNotification,
+                        messageId,
+                        triageResult.type,
+                        {
+                          subject: headers.subject,
+                          body: body.substring(0, 500), // 最初の500文字のみ
+                          sender: headers.from || 'Unknown',
+                          source: 'Gmail'
+                        },
+                        draft
+                      );
+                    } catch (notifyError: any) {
+                      errors.push(`Failed to send notification for message ${message.id}: ${notifyError.message}`);
+                    }
                   }
                 } catch (triageError: any) {
                   errors.push(`Failed to triage message ${message.id}: ${triageError.message}`);
