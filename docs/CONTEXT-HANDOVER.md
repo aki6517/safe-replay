@@ -108,19 +108,31 @@ ADHD特性による「連絡業務への心理的抵抗感・先延ばし」を�
   - ✅ エラーハンドリングを実装
   - ✅ テスト用Gmailアカウントで動作確認完了（未読メール5件取得、メッセージ詳細取得成功）
 
+- ✅ **Issue #11**: Chatwork API連携実装（完了）
+  - ✅ Chatwork APIクライアントを実装（`src/services/chatwork.ts`）
+  - ✅ APIトークン認証を実装
+  - ✅ ルーム一覧取得機能を実装
+  - ✅ 自分宛（To/Direct）メッセージ取得機能を実装
+  - ✅ 無限ループ防止（自身のBot発言除外）を実装
+  - ✅ エラーハンドリングを実装
+  - ✅ Chatworkポーリングサービスを更新（`src/services/poller/chatwork.ts`）
+  - ✅ テストスクリプトの作成（`scripts/test-chatwork-api.ts`）
+  - ✅ セットアップガイドの作成（`docs/CHATWORK-API-SETUP.md`）
+  - ✅ テスト用Chatworkアカウントで動作確認完了（181件のルーム取得、10件の自分宛メッセージ取得成功）
+
 ---
 
 ## 🎯 次の作業
 
-### Issue #11: Chatwork API連携実装
+### Issue #12: AI基本処理実装
 
-**ファイル**: `docs/issues/11-chatwork-api-integration.md`
+**ファイル**: `docs/issues/12-ai-basic-processing.md`
 
-**概要**: Chatwork APIを使用した自分宛メッセージ取得機能を実装
+**概要**: OpenAI APIを使用したメッセージのトリアージと返信ドラフト生成機能を実装
 
-**依存**: Issue #3
+**依存**: Issue #11
 
-**ラベル**: `backend`, `chatwork`
+**ラベル**: `backend`, `ai`
 
 ---
 

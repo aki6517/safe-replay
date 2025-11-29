@@ -12,8 +12,8 @@ AI自動返信アシスタント「SafeReply」の開発を進めています。
 技術スタック: Node.js + TypeScript + Hono + Supabase + Upstash Redis + Railway
 
 ## 現在の進捗
-- Issue #1〜#10: 完了
-- Issue #11: Chatwork API連携（次の作業）
+- Issue #1〜#11: 完了
+- Issue #12: AI基本処理実装（次の作業）
 
 ## 重要なファイル
 - プロジェクトルール: `docs/PROJECT-RULES.md`（必ず参照すること）
@@ -22,9 +22,9 @@ AI自動返信アシスタント「SafeReply」の開発を進めています。
 - 設計ドキュメント: `/Users/nishiyamaakihiro/Documents/01_requirements.md` など
 
 ## 次の作業
-Issue #11: Chatwork API連携
-- Chatwork APIを使用した自分宛メッセージ取得機能の実装
-- 詳細は `docs/issues/11-chatwork-api-integration.md` を参照
+Issue #12: AI基本処理実装
+- OpenAI APIを使用したメッセージのトリアージと返信ドラフト生成機能の実装
+- 詳細は `docs/issues/12-ai-basic-processing.md` を参照
 
 ## 作業ルール
 1. `docs/PROJECT-RULES.md`を必ず参照し、ルールを厳守すること
