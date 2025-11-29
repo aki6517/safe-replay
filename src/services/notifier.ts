@@ -79,14 +79,27 @@ export async function sendLineNotification(
         success = await sendTextMessage(userId, notificationText);
       }
     } else if (triageType === 'B') {
-      // Type B: テキストメッセージのみ（Flex MessageはIssue #20で実装）
-      let notificationText = `【メッセージ受信】\n\n`;
-      if (message.subject) {
-        notificationText += `件名: ${message.subject}\n`;
+      // Type B: Flex Messageを使用（静音通知）
+      const { createTypeBFlexMessage } = await import('./flex-messages/type-b');
+      const { sendFlexMessage } = await import('./line');
+      
+      const flexMessage = createTypeBFlexMessage({
+        messageId,
+        subject: message.subject,
+        body: message.body,
+        sender: message.sender,
+        source: message.source
+      });
+      
+      // デバッグ用: Flex MessageのJSONを出力（開発環境のみ）
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[Flex Message JSON]', JSON.stringify(flexMessage, null, 2));
       }
-      notificationText += `送信元: ${message.sender} (${message.source})\n\n`;
-      notificationText += `--- メッセージ内容 ---\n${message.body}`;
-      success = await sendTextMessage(userId, notificationText);
+      
+      // 静音通知で送信（通知音を無効化）
+      success = await sendFlexMessage(userId, flexMessage, {
+        notificationDisabled: true
+      });
     }
     
     if (success) {

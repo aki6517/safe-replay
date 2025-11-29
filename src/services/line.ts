@@ -113,9 +113,16 @@ export async function replyTextMessage(replyToken: string, text: string): Promis
  * 
  * @param userId - LINE User ID
  * @param flexMessage - Flex Messageオブジェクト
+ * @param options - 送信オプション（通知音の設定など）
  * @returns 成功時true、失敗時false
  */
-export async function sendFlexMessage(userId: string, flexMessage: FlexMessage): Promise<boolean> {
+export async function sendFlexMessage(
+  userId: string,
+  flexMessage: FlexMessage,
+  options?: {
+    notificationDisabled?: boolean; // 静音通知（通知音を無効化）
+  }
+): Promise<boolean> {
   if (!isLineClientAvailable()) {
     console.error('LINE Messaging API credentials not configured');
     return false;
@@ -123,7 +130,8 @@ export async function sendFlexMessage(userId: string, flexMessage: FlexMessage):
 
   try {
     const client = getLineClient();
-    await client.pushMessage(userId, flexMessage);
+    // LINE Bot SDKのpushMessageは第3引数にnotificationDisabledを直接渡す
+    await client.pushMessage(userId, flexMessage, options?.notificationDisabled ?? false);
     return true;
   } catch (error) {
     console.error('LINE Flex Message送信エラー:', error);
