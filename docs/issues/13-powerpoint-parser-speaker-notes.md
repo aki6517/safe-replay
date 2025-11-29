@@ -14,12 +14,49 @@ PPTXファイルからスライドテキストと発表者ノートを抽出す�
 
 ### ゴール / 完了条件（Acceptance Criteria）
 
-- [ ] `src/parsers/pptx.ts`でPPTX解析を実装（pptx-parser使用）
-- [ ] スライド内テキスト抽出を実装
-- [ ] **発表者ノート（プレゼンターメモ）抽出を実装**（必須要件）
-- [ ] 抽出結果を統合インターフェースで返す
-- [ ] エラーハンドリングを実装
-- [ ] 発表者ノート付きPPTXファイルで動作確認
+- [x] `src/parsers/pptx.ts`でPPTX解析を実装（pptx-parser使用）
+- [x] スライド内テキスト抽出を実装
+- [x] **発表者ノート（プレゼンターメモ）抽出を実装**（必須要件）
+- [x] 抽出結果を統合インターフェースで返す
+- [x] エラーハンドリングを実装
+- [x] pptx-parser型定義の追加
+- [x] テストスクリプトの更新（PPTX対応）
+- [ ] 発表者ノート付きPPTXファイルで動作確認（手作業が必要）
+
+### 実装内容
+
+#### PPTX解析機能
+
+`parsePPTX()`関数で、スライドテキストと発表者ノートの両方を抽出します：
+
+```typescript
+import { parsePPTX } from './parsers/pptx';
+
+const result = await parsePPTX(buffer, 10);
+// result.text: 全スライドのテキスト
+// result.notes: 全スライドの発表者ノート
+// result.slides: スライドごとの詳細情報
+```
+
+#### 統合インターフェース
+
+`parseFile()`関数で、PPTXファイルも自動判定して解析します：
+
+```typescript
+import { parseFile } from './parsers';
+
+const result = await parseFile(buffer, 'presentation.pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 10);
+// result.text: スライドテキスト
+// result.notes: 発表者ノート
+// result.slides: スライドごとの詳細情報
+// result.pages: スライド数
+```
+
+### 動作確認方法
+
+```bash
+npm run test-file-parsers ./path/to/sample.pptx
+```
 
 ### テスト観点
 
