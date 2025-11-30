@@ -129,9 +129,11 @@ export async function pollGmail(
 
   try {
     // LINE User IDからusersテーブルのUUIDを取得
+    // lineUserIdが渡されていない場合は、環境変数から取得を試みる
+    let effectiveLineUserId = lineUserId || process.env.LINE_ALLOWED_USER_IDS?.split(',')[0]?.trim() || '';
     let userId: string | null = null;
-    if (lineUserId) {
-      userId = await getOrCreateUser(lineUserId);
+    if (effectiveLineUserId) {
+      userId = await getOrCreateUser(effectiveLineUserId);
       if (!userId) {
         return {
           summary: {
@@ -259,8 +261,8 @@ export async function pollGmail(
                     } as Record<string, unknown>
                   }).eq('id', messageId);
 
-                  // LINE User IDを取得（環境変数から、またはlineUserIdをそのまま使用）
-                  const lineUserIdForNotification = process.env.LINE_ALLOWED_USER_IDS?.split(',')[0]?.trim() || lineUserId || '';
+                  // LINE User IDを取得（effectiveLineUserIdを使用）
+                  const lineUserIdForNotification = effectiveLineUserId;
 
                   // Type Aの場合はドラフト生成
                   let draft: string | undefined;
