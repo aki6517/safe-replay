@@ -57,9 +57,9 @@ pollRoutes.post('/gmail', verifyServiceKey, async (c) => {
 pollRoutes.post('/chatwork', verifyServiceKey, async (c) => {
   try {
     const body = await c.req.json().catch(() => ({}));
-    const userId = body.user_id;
+    const lineUserId = body.user_id || body.line_user_id; // 後方互換性のため両方に対応
 
-    const result = await pollChatwork(userId);
+    const result = await pollChatwork(lineUserId);
 
     return c.json({
       status: 'ok',
