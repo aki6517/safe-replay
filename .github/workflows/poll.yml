@@ -29,9 +29,8 @@ jobs:
           BODY=$(echo "$RESPONSE" | sed '$d')
           
           echo "http_code=$HTTP_CODE" >> $GITHUB_OUTPUT
-          echo "response_body<<EOF" >> $GITHUB_OUTPUT
-          echo "$BODY" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # JSONレスポンスをbase64エンコードして保存（特殊文字の問題を回避）
+          echo "response_body=$(echo "$BODY" | base64 -w 0)" >> $GITHUB_OUTPUT
           
           if [ "$HTTP_CODE" != "200" ]; then
             echo "Gmail polling failed with HTTP $HTTP_CODE"
@@ -59,9 +58,8 @@ jobs:
           BODY=$(echo "$RESPONSE" | sed '$d')
           
           echo "http_code=$HTTP_CODE" >> $GITHUB_OUTPUT
-          echo "response_body<<EOF" >> $GITHUB_OUTPUT
-          echo "$BODY" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # JSONレスポンスをbase64エンコードして保存（特殊文字の問題を回避）
+          echo "response_body=$(echo "$BODY" | base64 -w 0)" >> $GITHUB_OUTPUT
           
           if [ "$HTTP_CODE" != "200" ]; then
             echo "Chatwork polling failed with HTTP $HTTP_CODE"
@@ -78,13 +76,13 @@ jobs:
             echo "### Gmail Poll"
             echo "- Status: ${{ steps.gmail_poll.outputs.http_code }}"
             echo '```json'
-            printf '%s\n' '${{ steps.gmail_poll.outputs.response_body }}'
+            echo '${{ steps.gmail_poll.outputs.response_body }}' | base64 -d
             echo '```'
             echo ""
             echo "### Chatwork Poll"
             echo "- Status: ${{ steps.chatwork_poll.outputs.http_code }}"
             echo '```json'
-            printf '%s\n' '${{ steps.chatwork_poll.outputs.response_body }}'
+            echo '${{ steps.chatwork_poll.outputs.response_body }}' | base64 -d
             echo '```'
           } >> $GITHUB_STEP_SUMMARY
 
