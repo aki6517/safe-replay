@@ -130,7 +130,7 @@ export async function pollGmail(
   try {
     // LINE User IDからusersテーブルのUUIDを取得
     // lineUserIdが渡されていない場合は、環境変数から取得を試みる
-    let effectiveLineUserId = lineUserId || process.env.LINE_ALLOWED_USER_IDS?.split(',')[0]?.trim() || '';
+    const effectiveLineUserId = lineUserId || process.env.LINE_ALLOWED_USER_IDS?.split(',')[0]?.trim() || '';
     let userId: string | null = null;
     if (effectiveLineUserId) {
       userId = await getOrCreateUser(effectiveLineUserId);
