@@ -181,7 +181,7 @@ export async function pollChatwork(
         // メッセージ詳細を記録
         const messageDetail = {
           message_id: message.message_id,
-          room_id: message.account.account_id, // 簡易版（実際はルームIDが必要）
+          room_id: message.room_id || null,
           sender: message.account.name,
           body: messageText.substring(0, 200), // 最初の200文字のみ
           send_time: new Date(message.send_time * 1000).toISOString()
@@ -204,7 +204,7 @@ export async function pollChatwork(
               received_at: new Date(message.send_time * 1000).toISOString(),
               status: 'pending' as const,
               metadata: {
-                room_id: message.account.account_id, // 簡易版
+                room_id: message.room_id || null,
                 account_id: message.account.account_id,
                 avatar_path: message.account.avatar_path,
                 update_time: message.update_time

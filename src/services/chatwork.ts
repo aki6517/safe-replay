@@ -43,6 +43,7 @@ export interface ChatworkMessage {
   body: string;
   send_time: number;
   update_time: number;
+  room_id?: number; // ルームID（getMessagesToMeで追加される）
 }
 
 /**
@@ -238,7 +239,11 @@ export async function getMessagesToMe(
           if (isMessageToMe(message, myId)) {
             // 自分自身のメッセージは除外（無限ループ防止）
             if (message.account.account_id !== myId) {
-              messagesToMe.push(message);
+              // ルームIDを追加
+              messagesToMe.push({
+                ...message,
+                room_id: room.room_id
+              });
             }
           }
 

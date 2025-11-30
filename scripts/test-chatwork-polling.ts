@@ -12,12 +12,14 @@ async function main() {
   // 環境変数チェック
   const requiredEnvVars = [
     'CHATWORK_API_TOKEN',
-    'CHATWORK_MY_ID',
     'SUPABASE_URL',
     'SUPABASE_SERVICE_ROLE_KEY',
     'LINE_CHANNEL_ACCESS_TOKEN',
     'LINE_ALLOWED_USER_IDS'
   ];
+  
+  // オプション環境変数（設定されていない場合はAPIから取得）
+  const optionalEnvVars = ['CHATWORK_MY_ID'];
 
   const missing: string[] = [];
   for (const envVar of requiredEnvVars) {
@@ -32,7 +34,21 @@ async function main() {
     process.exit(1);
   }
 
-  console.log('✅ 必要な環境変数が設定されています\n');
+  console.log('✅ 必要な環境変数が設定されています');
+  
+  // オプション環境変数の確認
+  const missingOptional: string[] = [];
+  for (const envVar of optionalEnvVars) {
+    if (!process.env[envVar]) {
+      missingOptional.push(envVar);
+    }
+  }
+  
+  if (missingOptional.length > 0) {
+    console.log(`ℹ️  以下の環境変数は未設定ですが、APIから取得します: ${missingOptional.join(', ')}\n`);
+  } else {
+    console.log('✅ オプション環境変数も設定されています\n');
+  }
 
   // テスト用のuserId（LINE_ALLOWED_USER_IDSの最初のIDを使用）
   const userId = process.env.LINE_ALLOWED_USER_IDS?.split(',')[0]?.trim();
