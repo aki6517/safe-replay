@@ -14,10 +14,10 @@ Type B用のアクションボタン（既読・確認メール）の処理を�
 
 ### ゴール / 完了条件（Acceptance Criteria）
 
-- [ ] `action=read`で既読処理を実装（ステータス更新）
-- [ ] `action=ack`で確認メール送信処理を実装（Gmail）
-- [ ] DBにアクションログを記録
-- [ ] 完了通知をLINE Botに送信
+- [x] `action=read`で既読処理を実装（ステータス更新）
+- [x] `action=acknowledge`（または`action=ack`）で確認メール送信処理を実装（Gmail）
+- [x] DBにアクションログを記録（メッセージステータスを更新）
+- [x] 完了通知をLINE Botに送信
 
 ### テスト観点
 

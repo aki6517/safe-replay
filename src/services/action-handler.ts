@@ -107,6 +107,12 @@ export async function handleLineAction(
     } else if (action === 'dismiss') {
       // 却下処理
       await handleDismissAction(userId, message);
+    } else if (action === 'read') {
+      // 既読処理
+      await handleReadAction(userId, message);
+    } else if (action === 'acknowledge' || action === 'ack') {
+      // 確認メール送信処理
+      await handleAcknowledgeAction(userId, message);
     } else {
       console.error('[アクション処理失敗] 不明なアクション', { action });
       await sendTextMessage(userId, `エラー: 不明なアクション「${action}」です。`);
@@ -216,6 +222,76 @@ async function handleDismissAction(userId: string, message: any): Promise<void> 
   } catch (error: any) {
     console.error('[却下アクションエラー]', { userId, messageId: message.id, error: error.message });
     await sendTextMessage(userId, 'エラー: 却下処理中にエラーが発生しました。');
+  }
+}
+
+/**
+ * 既読アクションを処理
+ */
+async function handleReadAction(userId: string, message: any): Promise<void> {
+  try {
+    // ステータスを更新
+    const success = await updateMessageStatus(message.id, 'read');
+
+    if (success) {
+      await sendTextMessage(userId, '✅ 既読にしました。');
+      console.log('[既読アクション完了]', { messageId: message.id });
+    } else {
+      await sendTextMessage(userId, '❌ 既読処理に失敗しました。');
+    }
+  } catch (error: any) {
+    console.error('[既読アクションエラー]', { userId, messageId: message.id, error: error.message });
+    await sendTextMessage(userId, 'エラー: 既読処理中にエラーが発生しました。');
+  }
+}
+
+/**
+ * 確認メール送信アクションを処理
+ */
+async function handleAcknowledgeAction(userId: string, message: any): Promise<void> {
+  try {
+    const sourceType = message.source_type;
+
+    if (sourceType !== 'gmail') {
+      await sendTextMessage(userId, '確認メールはGmailメッセージのみ送信できます。');
+      return;
+    }
+
+    // 確認メールの本文を作成
+    const subject = message.subject || '確認メール';
+    const senderIdentifier = message.sender_identifier || '';
+    
+    // メールアドレスを抽出（簡易版）
+    const emailMatch = senderIdentifier.match(/<(.+)>/);
+    const toEmail = emailMatch ? emailMatch[1] : senderIdentifier;
+
+    if (!toEmail || !toEmail.includes('@')) {
+      await sendTextMessage(userId, 'エラー: 送信先メールアドレスが取得できませんでした。');
+      return;
+    }
+
+    // 確認メールの本文
+    const acknowledgeBody = `お世話になっております。
+
+${subject}について、内容を確認いたしました。
+
+引き続きよろしくお願いいたします。`;
+
+    const threadId = message.thread_id;
+    const replySubject = `Re: ${subject}`;
+    const success = await sendGmailMessage(toEmail, replySubject, acknowledgeBody, threadId || undefined);
+
+    if (success) {
+      // ステータスを更新
+      await updateMessageStatus(message.id, 'read');
+      await sendTextMessage(userId, '✅ 確認メールを送信しました。');
+      console.log('[確認メール送信完了]', { messageId: message.id, toEmail });
+    } else {
+      await sendTextMessage(userId, '❌ 確認メールの送信に失敗しました。もう一度お試しください。');
+    }
+  } catch (error: any) {
+    console.error('[確認メール送信エラー]', { userId, messageId: message.id, error: error.message });
+    await sendTextMessage(userId, 'エラー: 確認メール送信処理中にエラーが発生しました。');
   }
 }
 
