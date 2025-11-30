@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { isLineClientAvailable, replyTextMessage } from '../services/line';
 import { processForwardedMessage } from '../services/message-processor';
 import { handleLineAction } from '../services/action-handler';
+import { isUserAllowedSync } from '../utils/security';
 import type {
   LineWebhookRequest,
   LineWebhookEvent,
@@ -74,8 +75,13 @@ lineWebhook.post('/webhook', async (c) => {
         continue;
       }
 
-      // ホワイトリストチェック（簡易版、後で実装）
-      // TODO: ホワイトリスト検証を追加（Issue #26で実装予定）
+      // ホワイトリストチェック
+      if (!isUserAllowedSync(userId)) {
+        console.warn(`[セキュリティ] 許可されていないユーザーからのアクセス: ${userId}`);
+        // 403 Forbiddenを返す（ただし、LINE Webhookの仕様上200を返す必要がある場合もある）
+        // ここでは処理をスキップして続行（ログに記録）
+        continue;
+      }
 
       if (eventType === 'message') {
         const messageEvent = event as MessageEvent;

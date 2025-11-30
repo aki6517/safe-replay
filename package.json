@@ -19,7 +19,8 @@
     "test-gmail-polling": "tsx scripts/test-gmail-polling.ts",
     "test-chatwork-polling": "tsx scripts/test-chatwork-polling.ts",
     "test-line-forward-message": "tsx scripts/test-line-forward-message.ts",
-    "test-line-action-handler": "tsx scripts/test-line-action-handler.ts"
+    "test-line-action-handler": "tsx scripts/test-line-action-handler.ts",
+    "test-whitelist": "tsx scripts/test-whitelist.ts"
   },
   "keywords": [
     "ai",
