@@ -22,6 +22,8 @@ Chatwork未読メッセージを定期的に取得・処理する機能を実装
 - [x] Redisで処理済みID管理を実装
 - [x] エラーハンドリングとログ記録を実装
 - [x] LINE User IDからusersテーブルのUUIDを取得する処理を実装
+- [x] ルームIDの処理を修正（getMessagesToMeでルームIDを追加）
+- [x] 動作確認完了（Chatworkポーリング → トリアージ → LINE通知が正常に動作）
 
 ### テスト観点
 
