@@ -106,40 +106,62 @@ async function main() {
     console.error(error);
   }
 
-  // テスト3: 送信アクション（Gmail/Chatworkの場合は実際に送信される）
-  console.log('--- テスト3: 送信アクション（send） ---\n');
+  // テスト3: 既読アクション
+  console.log('--- テスト3: 既読アクション（read） ---\n');
+  try {
+    const readActionData = `action=read&message_id=${testMessage.id}`;
+    await handleLineAction(lineUserId, readActionData);
+    console.log('\n✅ 既読アクションの処理が完了しました\n');
+    
+    // ステータスを確認
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    const { data: readMessage } = await supabase
+      .from('messages')
+      .select('status')
+      .eq('id', testMessage.id)
+      .single();
+    
+    if (readMessage?.status === 'read') {
+      console.log('✅ メッセージステータスが「read」に更新されました\n');
+    } else {
+      console.log('⚠️  メッセージステータスの更新を確認できませんでした\n');
+    }
+  } catch (error: any) {
+    console.error('❌ エラーが発生しました:', error.message);
+    console.error(error);
+  }
+
+  // テスト4: 確認メール送信アクション（Gmailの場合は実際に送信される）
+  console.log('--- テスト4: 確認メール送信アクション（acknowledge） ---\n');
   console.log('⚠️  注意: このテストは実際にメール/メッセージを送信します\n');
   
   const sourceType = testMessage.source_type;
   if (sourceType === 'gmail') {
-    console.log('Gmail送信テスト:');
+    console.log('Gmail確認メール送信テスト:');
     console.log('  - Gmail APIの認証情報が必要です');
-    console.log('  - 実際にメールが送信されます\n');
-  } else if (sourceType === 'chatwork') {
-    console.log('Chatwork送信テスト:');
-    console.log('  - Chatwork APIトークンが必要です');
-    console.log('  - 実際にメッセージが送信されます\n');
+    console.log('  - 実際に確認メールが送信されます\n');
   } else {
-    console.log(`ソースタイプ「${sourceType}」は送信テストをスキップします\n`);
+    console.log(`ソースタイプ「${sourceType}」は確認メール送信テストをスキップします`);
+    console.log('  （確認メールはGmailメッセージのみ送信可能）\n');
   }
 
-  const shouldTestSend = process.env.TEST_SEND_ACTION === 'true';
-  if (shouldTestSend && (sourceType === 'gmail' || sourceType === 'chatwork')) {
+  const shouldTestAck = process.env.TEST_ACK_ACTION === 'true';
+  if (shouldTestAck && sourceType === 'gmail') {
     try {
-      const sendActionData = `action=send&message_id=${testMessage.id}`;
-      await handleLineAction(lineUserId, sendActionData);
-      console.log('\n✅ 送信アクションの処理が完了しました\n');
+      const ackActionData = `action=acknowledge&message_id=${testMessage.id}`;
+      await handleLineAction(lineUserId, ackActionData);
+      console.log('\n✅ 確認メール送信アクションの処理が完了しました\n');
       
       // ステータスを確認
       await new Promise(resolve => setTimeout(resolve, 1000));
-      const { data: sentMessage } = await supabase
+      const { data: ackMessage } = await supabase
         .from('messages')
         .select('status')
         .eq('id', testMessage.id)
         .single();
       
-      if (sentMessage?.status === 'sent') {
-        console.log('✅ メッセージステータスが「sent」に更新されました\n');
+      if (ackMessage?.status === 'read') {
+        console.log('✅ メッセージステータスが「read」に更新されました\n');
       } else {
         console.log('⚠️  メッセージステータスの更新を確認できませんでした\n');
       }
@@ -148,16 +170,17 @@ async function main() {
       console.error(error);
     }
   } else {
-    console.log('ℹ️  送信テストをスキップしました');
-    console.log('   送信テストを実行する場合は、TEST_SEND_ACTION=true を設定してください\n');
+    console.log('ℹ️  確認メール送信テストをスキップしました');
+    console.log('   確認メール送信テストを実行する場合は、TEST_ACK_ACTION=true を設定してください\n');
   }
 
   console.log('=== テスト完了 ===\n');
   console.log('📱 LINEアプリで通知が届いているか確認してください:');
   console.log('   - 却下アクション: 「✅ 返信を却下しました。」');
   console.log('   - 編集アクション: 「編集機能は現在開発中です...」');
-  if (shouldTestSend) {
-    console.log('   - 送信アクション: 「✅ 返信を送信しました。」');
+  console.log('   - 既読アクション: 「✅ 既読にしました。」');
+  if (shouldTestAck && sourceType === 'gmail') {
+    console.log('   - 確認メール送信アクション: 「✅ 確認メールを送信しました。」');
   }
   console.log('\n💾 DBにメッセージステータスが更新されているか確認してください:');
   console.log('   - Supabaseのmessagesテーブルを確認');
