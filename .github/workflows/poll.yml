@@ -72,19 +72,21 @@ jobs:
       - name: Report Results
         if: always()
         run: |
-          echo "## Polling Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Gmail Poll" >> $GITHUB_STEP_SUMMARY
-          echo "- Status: ${{ steps.gmail_poll.outputs.http_code }}" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.gmail_poll.outputs.response_body }}" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Chatwork Poll" >> $GITHUB_STEP_SUMMARY
-          echo "- Status: ${{ steps.chatwork_poll.outputs.http_code }}" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
-          echo "${{ steps.chatwork_poll.outputs.response_body }}" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Polling Results"
+            echo ""
+            echo "### Gmail Poll"
+            echo "- Status: ${{ steps.gmail_poll.outputs.http_code }}"
+            echo '```json'
+            printf '%s\n' '${{ steps.gmail_poll.outputs.response_body }}'
+            echo '```'
+            echo ""
+            echo "### Chatwork Poll"
+            echo "- Status: ${{ steps.chatwork_poll.outputs.http_code }}"
+            echo '```json'
+            printf '%s\n' '${{ steps.chatwork_poll.outputs.response_body }}'
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
 
 
 
