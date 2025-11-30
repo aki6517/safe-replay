@@ -292,3 +292,47 @@ export function extractMessageText(message: ChatworkMessage): string {
   return text;
 }
 
+/**
+ * Chatworkでメッセージを送信
+ * 
+ * @param roomId - ルームID
+ * @param message - 送信するメッセージ
+ * @returns 送信成功時true
+ */
+export async function sendChatworkMessage(
+  roomId: number,
+  message: string
+): Promise<boolean> {
+  if (!isChatworkClientAvailable()) {
+    console.error('Chatwork API token not configured');
+    return false;
+  }
+
+  try {
+    const response = await fetch(
+      `${CHATWORK_API_BASE}/rooms/${roomId}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          'X-ChatWorkToken': getChatworkClient().apiToken,
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: new URLSearchParams({
+          body: message
+        })
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Chatwork API error: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    console.log('[Chatwork送信成功]', { roomId });
+    return true;
+  } catch (error: any) {
+    console.error('[Chatwork送信失敗]', { roomId, error: error.message });
+    return false;
+  }
+}
+

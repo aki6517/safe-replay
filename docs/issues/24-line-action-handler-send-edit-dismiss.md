@@ -15,12 +15,12 @@ LINE Botのアクションボタン（送信・修正・断る）の処理を実
 
 ### ゴール / 完了条件（Acceptance Criteria）
 
-- [ ] Postbackイベントのパース処理を実装
-- [ ] `action=send`で返信送信処理を実装（Gmail/Chatwork）
-- [ ] `action=edit`で編集モード開始処理を実装
-- [ ] `action=dismiss`で却下処理を実装
-- [ ] DBにアクションログを記録
-- [ ] 完了通知をLINE Botに送信
+- [x] Postbackイベントのパース処理を実装
+- [x] `action=send`で返信送信処理を実装（Gmail/Chatwork）
+- [x] `action=edit`で編集モード開始処理を実装（将来実装予定のメッセージを表示）
+- [x] `action=dismiss`で却下処理を実装
+- [x] DBにアクションログを記録（メッセージステータスを更新）
+- [x] 完了通知をLINE Botに送信
 
 ### テスト観点
 

@@ -268,3 +268,62 @@ export function extractMessageHeaders(message: GmailMessage): {
   };
 }
 
+/**
+ * Gmailでメールを送信
+ * 
+ * @param to - 送信先メールアドレス
+ * @param subject - 件名
+ * @param body - 本文
+ * @param threadId - スレッドID（返信の場合）
+ * @returns 送信成功時true
+ */
+export async function sendGmailMessage(
+  to: string,
+  subject: string,
+  body: string,
+  threadId?: string
+): Promise<boolean> {
+  if (!isGmailClientAvailable()) {
+    console.error('Gmail API credentials not configured');
+    return false;
+  }
+
+  const client = getGmailClient();
+  if (!client) {
+    return false;
+  }
+
+  try {
+    // メール本文を作成
+    const messageParts = [
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      'Content-Type: text/plain; charset=utf-8',
+      '',
+      body
+    ];
+
+    const message = messageParts.join('\n');
+    const encodedMessage = Buffer.from(message)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    const requestBody: gmail_v1.Params$Resource$Users$Messages$Send = {
+      userId: 'me',
+      requestBody: {
+        raw: encodedMessage,
+        threadId: threadId
+      }
+    };
+
+    await client.users.messages.send(requestBody);
+    console.log('[Gmail送信成功]', { to, subject, threadId });
+    return true;
+  } catch (error: any) {
+    console.error('[Gmail送信失敗]', { to, subject, error: error.message });
+    return false;
+  }
+}
+
