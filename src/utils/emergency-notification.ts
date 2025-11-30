@@ -5,7 +5,7 @@
  * - APIトークン失効検知時の通知
  * - システム停止検知時の通知
  */
-import { sendFlexMessage, sendTextMessage, isLineClientAvailable } from '../services/line';
+import { sendFlexMessage, isLineClientAvailable } from '../services/line';
 import { createEmergencyFlexMessage } from '../services/flex-messages/emergency';
 import { getAllowedUserIds } from './security';
 
