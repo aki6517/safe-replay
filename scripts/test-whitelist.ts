@@ -1,6 +1,7 @@
 /**
  * ホワイトリスト検証機能のテストスクリプト
  */
+import 'dotenv/config';
 import { isUserAllowedSync, isUserAllowed } from '../src/utils/security';
 
 async function main() {
