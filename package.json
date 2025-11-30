@@ -18,7 +18,8 @@
     "test-line-notification": "tsx scripts/test-line-notification.ts",
     "test-gmail-polling": "tsx scripts/test-gmail-polling.ts",
     "test-chatwork-polling": "tsx scripts/test-chatwork-polling.ts",
-    "test-line-forward-message": "tsx scripts/test-line-forward-message.ts"
+    "test-line-forward-message": "tsx scripts/test-line-forward-message.ts",
+    "test-line-action-handler": "tsx scripts/test-line-action-handler.ts"
   },
   "keywords": [
     "ai",
