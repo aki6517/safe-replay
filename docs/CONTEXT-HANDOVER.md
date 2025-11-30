@@ -146,15 +146,39 @@ ADHD特性による「連絡業務への心理的抵抗感・先延ばし」を�
 
 ## 🎯 次の作業
 
-### Issue #14: PowerPoint解析実装（発表者ノート抽出）
+### Issue #23: LINE転送メッセージ処理
 
-**ファイル**: `docs/issues/13-powerpoint-parser-pptx.md`
+**ファイル**: `docs/issues/23-line-forward-message.md`
 
-**概要**: PPTXファイルからスライドテキストと発表者ノートを抽出する機能を実装
+**概要**: LINE Botで転送されたメッセージを処理し、トリアージ→通知のフローを実装
 
-**依存**: Issue #13
+**依存**: Issue #8, #16, #17, #18
 
-**ラベル**: `backend`, `parser`
+**ラベル**: `backend`, `line`, `webhook`
+
+---
+
+### Issue #24: LINEアクションハンドラー実装（送信・編集・却下）
+
+**ファイル**: `docs/issues/24-line-action-handler-send-edit-dismiss.md`
+
+**概要**: Flex Messageのボタンアクション（送信・編集・却下）を処理する機能を実装
+
+**依存**: Issue #19, #20
+
+**ラベル**: `backend`, `line`, `webhook`
+
+---
+
+### Issue #25: LINEアクションハンドラー実装（既読・確認）
+
+**ファイル**: `docs/issues/25-line-action-handler-read-ack.md`
+
+**概要**: Flex Messageのボタンアクション（既読・確認）を処理する機能を実装
+
+**依存**: Issue #20
+
+**ラベル**: `backend`, `line`, `webhook`
 
 ---
 
