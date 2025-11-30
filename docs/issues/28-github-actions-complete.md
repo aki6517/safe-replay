@@ -14,12 +14,12 @@ GitHub Actionsの定期実行ワークフローを完成させ、自動ポーリ
 
 ### ゴール / 完了条件（Acceptance Criteria）
 
-- [ ] `.github/workflows/poll.yml`を完成（Gmail/Chatworkポーリング実行）
-- [ ] `.github/workflows/health.yml`を完成（ヘルスチェック・異常時通知）
-- [ ] Service Key認証を実装
-- [ ] エラー時の通知処理を実装
-- [ ] ワークフローが正常に実行される
-- [ ] スケジュール実行が動作する
+- [x] `.github/workflows/poll.yml`を完成（Gmail/Chatworkポーリング実行）
+- [x] `.github/workflows/health.yml`を完成（ヘルスチェック・異常時通知）
+- [x] Service Key認証を実装（APIエンドポイント側で実装済み）
+- [x] エラー時の通知処理を実装（緊急通知機能を使用）
+- [x] ワークフローが正常に実行される
+- [x] スケジュール実行が動作する（5分間隔でポーリング、15分間隔でヘルスチェック）
 
 ### テスト観点
 

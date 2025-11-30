@@ -63,11 +63,29 @@ healthRoutes.get('/deep', verifyServiceKey, async (c) => {
         latency_ms: Date.now() - dbStart,
         error: error?.message
       };
+      
+      // データベースエラーの場合は緊急通知を送信
+      if (error) {
+        try {
+          const { notifyDatabaseError } = await import('../utils/emergency-notification');
+          await notifyDatabaseError(error.message || 'Database connection failed');
+        } catch (notifyError) {
+          console.error('Failed to send emergency notification:', notifyError);
+        }
+      }
     } catch (error: any) {
       components.database = {
         status: 'unhealthy',
         error: error.message
       };
+      
+      // データベース接続エラーの場合は緊急通知を送信
+      try {
+        const { notifyDatabaseError } = await import('../utils/emergency-notification');
+        await notifyDatabaseError(error.message || 'Database connection failed');
+      } catch (notifyError) {
+        console.error('Failed to send emergency notification:', notifyError);
+      }
     }
   } else {
     components.database = {

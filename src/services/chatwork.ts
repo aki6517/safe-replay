@@ -113,9 +113,21 @@ async function apiRequest<T>(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(
+    const error = new Error(
       `Chatwork API error: ${response.status} ${response.statusText} - ${errorText}`
     );
+    
+    // 401エラー（認証エラー）の場合は緊急通知を送信
+    if (response.status === 401) {
+      try {
+        const { notifyApiTokenExpired } = await import('../utils/emergency-notification');
+        await notifyApiTokenExpired('Chatwork', errorText || 'Unauthorized');
+      } catch (notifyError) {
+        console.error('Failed to send emergency notification:', notifyError);
+      }
+    }
+    
+    throw error;
   }
 
   // 空のレスポンスの場合は空配列を返す
@@ -325,13 +337,27 @@ export async function sendChatworkMessage(
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Chatwork API error: ${response.status} ${response.statusText} - ${errorText}`);
+      const error = new Error(`Chatwork API error: ${response.status} ${response.statusText} - ${errorText}`);
+      
+      // 401エラー（認証エラー）の場合は緊急通知を送信
+      if (response.status === 401) {
+        try {
+          const { notifyApiTokenExpired } = await import('../utils/emergency-notification');
+          await notifyApiTokenExpired('Chatwork', errorText || 'Unauthorized');
+        } catch (notifyError) {
+          console.error('Failed to send emergency notification:', notifyError);
+        }
+      }
+      
+      throw error;
     }
 
     console.log('[Chatwork送信成功]', { roomId });
     return true;
   } catch (error: any) {
     console.error('[Chatwork送信失敗]', { roomId, error: error.message });
+    
+    // 401エラーの場合は既に緊急通知が送信されているので、ここでは再送信しない
     return false;
   }
 }

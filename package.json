@@ -20,7 +20,9 @@
     "test-chatwork-polling": "tsx scripts/test-chatwork-polling.ts",
     "test-line-forward-message": "tsx scripts/test-line-forward-message.ts",
     "test-line-action-handler": "tsx scripts/test-line-action-handler.ts",
-    "test-whitelist": "tsx scripts/test-whitelist.ts"
+    "test-whitelist": "tsx scripts/test-whitelist.ts",
+    "test-supabase-connection": "tsx scripts/test-supabase-connection.ts",
+    "test-emergency-notification": "tsx scripts/test-emergency-notification.ts"
   },
   "keywords": [
     "ai",

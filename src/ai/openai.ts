@@ -143,6 +143,15 @@ export class OpenAIProvider implements AIProvider {
 
         // リトライ不可能なエラーの場合は即座にスロー
         if (error.status === 400 || error.status === 401 || error.status === 403) {
+          // 401エラー（認証エラー）の場合は緊急通知を送信
+          if (error.status === 401) {
+            try {
+              const { notifyApiTokenExpired } = await import('../utils/emergency-notification');
+              await notifyApiTokenExpired('OpenAI', error.message || 'Unauthorized');
+            } catch (notifyError) {
+              console.error('Failed to send emergency notification:', notifyError);
+            }
+          }
           throw error;
         }
       }

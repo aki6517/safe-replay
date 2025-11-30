@@ -10,16 +10,81 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Gmail Poll
+        id: gmail_poll
         run: |
-          curl -X POST "${{ secrets.API_BASE_URL }}/api/v1/poll/gmail" \
+          # LINE_ALLOWED_USER_IDSが設定されている場合はline_user_idを渡す
+          if [ -n "${{ secrets.LINE_ALLOWED_USER_IDS }}" ]; then
+            LINE_USER_ID=$(echo "${{ secrets.LINE_ALLOWED_USER_IDS }}" | cut -d',' -f1 | xargs)
+            PAYLOAD="{\"line_user_id\": \"$LINE_USER_ID\"}"
+          else
+            PAYLOAD="{}"
+          fi
+          
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${{ secrets.API_BASE_URL }}/api/v1/poll/gmail" \
             -H "Authorization: Bearer ${{ secrets.SERVICE_KEY }}" \
-            -H "Content-Type: application/json"
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "http_code=$HTTP_CODE" >> $GITHUB_OUTPUT
+          echo "response_body<<EOF" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "Gmail polling failed with HTTP $HTTP_CODE"
+            echo "$BODY"
+            exit 1
+          fi
       
       - name: Trigger Chatwork Poll
+        id: chatwork_poll
         run: |
-          curl -X POST "${{ secrets.API_BASE_URL }}/api/v1/poll/chatwork" \
+          # LINE_ALLOWED_USER_IDSが設定されている場合はline_user_idを渡す
+          if [ -n "${{ secrets.LINE_ALLOWED_USER_IDS }}" ]; then
+            LINE_USER_ID=$(echo "${{ secrets.LINE_ALLOWED_USER_IDS }}" | cut -d',' -f1 | xargs)
+            PAYLOAD="{\"line_user_id\": \"$LINE_USER_ID\"}"
+          else
+            PAYLOAD="{}"
+          fi
+          
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${{ secrets.API_BASE_URL }}/api/v1/poll/chatwork" \
             -H "Authorization: Bearer ${{ secrets.SERVICE_KEY }}" \
-            -H "Content-Type: application/json"
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "http_code=$HTTP_CODE" >> $GITHUB_OUTPUT
+          echo "response_body<<EOF" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "Chatwork polling failed with HTTP $HTTP_CODE"
+            echo "$BODY"
+            exit 1
+          fi
+      
+      - name: Report Results
+        if: always()
+        run: |
+          echo "## Polling Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Gmail Poll" >> $GITHUB_STEP_SUMMARY
+          echo "- Status: ${{ steps.gmail_poll.outputs.http_code }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.gmail_poll.outputs.response_body }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Chatwork Poll" >> $GITHUB_STEP_SUMMARY
+          echo "- Status: ${{ steps.chatwork_poll.outputs.http_code }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.chatwork_poll.outputs.response_body }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
 
 

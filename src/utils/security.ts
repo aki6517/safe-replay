@@ -9,7 +9,7 @@
  * 環境変数から読み込む（優先）
  * 将来拡張: DBからも取得可能にする
  */
-function getAllowedUserIds(): string[] {
+export function getAllowedUserIds(): string[] {
   // 環境変数からホワイトリストを読み込む
   const envWhitelist = process.env.LINE_ALLOWED_USER_IDS;
   if (envWhitelist) {

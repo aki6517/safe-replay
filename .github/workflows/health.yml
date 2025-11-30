@@ -3,6 +3,7 @@ name: Health Check
 on:
   schedule:
     - cron: '*/15 * * * *'  # 15分毎
+  workflow_dispatch:  # 手動実行用
 
 jobs:
   health:
@@ -11,16 +12,56 @@ jobs:
       - name: Check Health
         id: health
         run: |
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
-            "${{ secrets.API_BASE_URL }}/api/v1/health/deep")
-          echo "status=$RESPONSE" >> $GITHUB_OUTPUT
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            "${{ secrets.API_BASE_URL }}/api/v1/health/deep" \
+            -H "Authorization: Bearer ${{ secrets.SERVICE_KEY }}")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "http_code=$HTTP_CODE" >> $GITHUB_OUTPUT
+          echo "response_body<<EOF" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          # HTTPステータスコードを確認
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "Health check failed with HTTP $HTTP_CODE"
+            echo "$BODY"
+            exit 1
+          fi
+          
+          # レスポンスボディからステータスを確認
+          STATUS=$(echo "$BODY" | grep -o '"status":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
+          echo "health_status=$STATUS" >> $GITHUB_OUTPUT
+          
+          if [ "$STATUS" != "healthy" ]; then
+            echo "System is unhealthy: $STATUS"
+            exit 1
+          fi
       
       - name: Alert on Failure
-        if: steps.health.outputs.status != '200'
+        if: failure()
         run: |
-          curl -X POST "${{ secrets.API_BASE_URL }}/api/v1/alert" \
-            -H "Authorization: Bearer ${{ secrets.SERVICE_KEY }}" \
-            -d '{"type": "system_down"}'
+          echo "Health check failed. Emergency notification should be sent automatically by the API."
+          echo "HTTP Status: ${{ steps.health.outputs.http_code }}"
+          echo "Health Status: ${{ steps.health.outputs.health_status }}"
+          echo ""
+          echo "Response body:"
+          echo "${{ steps.health.outputs.response_body }}"
+      
+      - name: Report Results
+        if: always()
+        run: |
+          echo "## Health Check Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **HTTP Status**: ${{ steps.health.outputs.http_code }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Health Status**: ${{ steps.health.outputs.health_status }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Response" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.health.outputs.response_body }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
 
 
 

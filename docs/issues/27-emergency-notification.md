@@ -14,11 +14,11 @@
 
 ### ゴール / 完了条件（Acceptance Criteria）
 
-- [ ] `src/utils/notification.ts`で緊急通知関数を実装
-- [ ] APIトークン失効検知時に通知
-- [ ] システム停止検知時に通知
-- [ ] 緊急通知用Flex Messageテンプレートを作成
-- [ ] エラーハンドリングを実装
+- [x] `src/utils/emergency-notification.ts`で緊急通知関数を実装
+- [x] APIトークン失効検知時に通知（Gmail、Chatwork、OpenAI）
+- [x] システム停止検知時に通知（データベース接続エラー）
+- [x] 緊急通知用Flex Messageテンプレートを作成（`src/services/flex-messages/emergency.ts`）
+- [x] エラーハンドリングを実装（重複通知防止機能付き）
 
 ### テスト観点
 

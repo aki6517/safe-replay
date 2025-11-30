@@ -138,8 +138,19 @@ export async function getUnreadMessages(maxResults: number = 50): Promise<GmailM
     }
 
     return messageDetails;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Gmail API error:', error);
+    
+    // 401エラー（認証エラー）の場合は緊急通知を送信
+    if (error?.code === 401 || error?.response?.status === 401) {
+      try {
+        const { notifyApiTokenExpired } = await import('../utils/emergency-notification');
+        await notifyApiTokenExpired('Gmail', error.message || 'Unauthorized');
+      } catch (notifyError) {
+        console.error('Failed to send emergency notification:', notifyError);
+      }
+    }
+    
     throw error;
   }
 }
@@ -184,8 +195,19 @@ export async function getThreadHistory(threadId: string): Promise<GmailMessage[]
     }
 
     return messages;
-  } catch (error) {
+  } catch (error: any) {
     console.error(`Failed to get thread history for ${threadId}:`, error);
+    
+    // 401エラー（認証エラー）の場合は緊急通知を送信
+    if (error?.code === 401 || error?.response?.status === 401) {
+      try {
+        const { notifyApiTokenExpired } = await import('../utils/emergency-notification');
+        await notifyApiTokenExpired('Gmail', error.message || 'Unauthorized');
+      } catch (notifyError) {
+        console.error('Failed to send emergency notification:', notifyError);
+      }
+    }
+    
     throw error;
   }
 }
@@ -323,6 +345,17 @@ export async function sendGmailMessage(
     return true;
   } catch (error: any) {
     console.error('[Gmail送信失敗]', { to, subject, error: error.message });
+    
+    // 401エラー（認証エラー）の場合は緊急通知を送信
+    if (error?.code === 401 || error?.response?.status === 401) {
+      try {
+        const { notifyApiTokenExpired } = await import('../utils/emergency-notification');
+        await notifyApiTokenExpired('Gmail', error.message || 'Unauthorized');
+      } catch (notifyError) {
+        console.error('Failed to send emergency notification:', notifyError);
+      }
+    }
+    
     return false;
   }
 }
