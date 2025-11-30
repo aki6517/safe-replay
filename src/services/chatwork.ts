@@ -223,10 +223,12 @@ export function isMessageToMe(
  * 自分宛メッセージを取得（全ルームから）
  * 
  * @param maxResults - 取得する最大件数（デフォルト: 50）
+ * @param daysBack - 過去何日間のメッセージを取得するか（デフォルト: 7日）
  * @returns 自分宛メッセージのリスト
  */
 export async function getMessagesToMe(
-  maxResults: number = 50
+  maxResults: number = 50,
+  daysBack: number = 7
 ): Promise<ChatworkMessage[]> {
   if (!isChatworkClientAvailable()) {
     throw new Error('Chatwork API token not configured');
@@ -235,6 +237,9 @@ export async function getMessagesToMe(
   try {
     // 自分のIDを取得
     const myId = await getMyId();
+
+    // 日付フィルタリング用のタイムスタンプを計算（過去N日間）
+    const cutoffTimestamp = Math.floor((Date.now() - daysBack * 24 * 60 * 60 * 1000) / 1000);
 
     // ルーム一覧を取得
     const rooms = await getRooms();
@@ -247,6 +252,11 @@ export async function getMessagesToMe(
 
         // 自分宛メッセージをフィルタリング
         for (const message of messages) {
+          // 日付フィルタリング：過去N日間のメッセージのみ処理
+          if (message.send_time < cutoffTimestamp) {
+            continue;
+          }
+
           // 自分宛メッセージかチェック
           if (isMessageToMe(message, myId)) {
             // 自分自身のメッセージは除外（無限ループ防止）
