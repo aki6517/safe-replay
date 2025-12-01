@@ -141,19 +141,27 @@ export async function getUnreadMessages(maxResults: number = 50): Promise<GmailM
   } catch (error: any) {
     console.error('Gmail API error:', error);
     
-    // 認証エラー（401、400 unauthorized_client）の場合は緊急通知を送信
+    // 認証エラー（401、400 unauthorized_client、invalid_grant、Token expired）の場合は緊急通知を送信
+    const errorMessage = error?.message || '';
+    const errorCode = error?.code || error?.response?.status;
+    const errorData = error?.response?.data || {};
+    const errorType = errorData?.error || '';
+    
     const isAuthError = 
-      error?.code === 401 || 
-      error?.response?.status === 401 ||
-      error?.code === 400 ||
-      error?.response?.status === 400 ||
-      error?.message?.includes('unauthorized_client') ||
-      error?.response?.data?.error === 'unauthorized_client';
+      errorCode === 401 || 
+      errorCode === 400 ||
+      errorType === 'unauthorized_client' ||
+      errorType === 'invalid_grant' ||
+      errorMessage.includes('unauthorized_client') ||
+      errorMessage.includes('invalid_grant') ||
+      errorMessage.includes('Token has been expired') ||
+      errorMessage.includes('Token has been revoked') ||
+      errorMessage.includes('expired or revoked');
     
     if (isAuthError) {
       try {
         const { notifyApiTokenExpired } = await import('../utils/emergency-notification');
-        const errorDetails = error?.response?.data?.error_description || error?.message || 'Unauthorized';
+        const errorDetails = errorData?.error_description || errorMessage || 'Unauthorized';
         await notifyApiTokenExpired('Gmail', errorDetails);
       } catch (notifyError) {
         console.error('Failed to send emergency notification:', notifyError);
@@ -207,19 +215,27 @@ export async function getThreadHistory(threadId: string): Promise<GmailMessage[]
   } catch (error: any) {
     console.error(`Failed to get thread history for ${threadId}:`, error);
     
-    // 認証エラー（401、400 unauthorized_client）の場合は緊急通知を送信
+    // 認証エラー（401、400 unauthorized_client、invalid_grant、Token expired）の場合は緊急通知を送信
+    const errorMessage = error?.message || '';
+    const errorCode = error?.code || error?.response?.status;
+    const errorData = error?.response?.data || {};
+    const errorType = errorData?.error || '';
+    
     const isAuthError = 
-      error?.code === 401 || 
-      error?.response?.status === 401 ||
-      error?.code === 400 ||
-      error?.response?.status === 400 ||
-      error?.message?.includes('unauthorized_client') ||
-      error?.response?.data?.error === 'unauthorized_client';
+      errorCode === 401 || 
+      errorCode === 400 ||
+      errorType === 'unauthorized_client' ||
+      errorType === 'invalid_grant' ||
+      errorMessage.includes('unauthorized_client') ||
+      errorMessage.includes('invalid_grant') ||
+      errorMessage.includes('Token has been expired') ||
+      errorMessage.includes('Token has been revoked') ||
+      errorMessage.includes('expired or revoked');
     
     if (isAuthError) {
       try {
         const { notifyApiTokenExpired } = await import('../utils/emergency-notification');
-        const errorDetails = error?.response?.data?.error_description || error?.message || 'Unauthorized';
+        const errorDetails = errorData?.error_description || errorMessage || 'Unauthorized';
         await notifyApiTokenExpired('Gmail', errorDetails);
       } catch (notifyError) {
         console.error('Failed to send emergency notification:', notifyError);
@@ -364,19 +380,27 @@ export async function sendGmailMessage(
   } catch (error: any) {
     console.error('[Gmail送信失敗]', { to, subject, error: error.message });
     
-    // 認証エラー（401、400 unauthorized_client）の場合は緊急通知を送信
+    // 認証エラー（401、400 unauthorized_client、invalid_grant、Token expired）の場合は緊急通知を送信
+    const errorMessage = error?.message || '';
+    const errorCode = error?.code || error?.response?.status;
+    const errorData = error?.response?.data || {};
+    const errorType = errorData?.error || '';
+    
     const isAuthError = 
-      error?.code === 401 || 
-      error?.response?.status === 401 ||
-      error?.code === 400 ||
-      error?.response?.status === 400 ||
-      error?.message?.includes('unauthorized_client') ||
-      error?.response?.data?.error === 'unauthorized_client';
+      errorCode === 401 || 
+      errorCode === 400 ||
+      errorType === 'unauthorized_client' ||
+      errorType === 'invalid_grant' ||
+      errorMessage.includes('unauthorized_client') ||
+      errorMessage.includes('invalid_grant') ||
+      errorMessage.includes('Token has been expired') ||
+      errorMessage.includes('Token has been revoked') ||
+      errorMessage.includes('expired or revoked');
     
     if (isAuthError) {
       try {
         const { notifyApiTokenExpired } = await import('../utils/emergency-notification');
-        const errorDetails = error?.response?.data?.error_description || error?.message || 'Unauthorized';
+        const errorDetails = errorData?.error_description || errorMessage || 'Unauthorized';
         await notifyApiTokenExpired('Gmail', errorDetails);
       } catch (notifyError) {
         console.error('Failed to send emergency notification:', notifyError);
