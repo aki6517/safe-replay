@@ -1,0 +1,36 @@
+name: Verify Gmail Token
+
+on:
+  schedule:
+    # 毎週月曜日の午前9時（JST）に実行（リフレッシュトークンの6ヶ月失効を防ぐ）
+    - cron: '0 0 * * 1'  # UTC時間（JST-9時間）
+  workflow_dispatch:  # 手動実行も可能
+
+jobs:
+  verify-token:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify Gmail Token
+        env:
+          GMAIL_CLIENT_ID: ${{ secrets.GMAIL_CLIENT_ID }}
+          GMAIL_CLIENT_SECRET: ${{ secrets.GMAIL_CLIENT_SECRET }}
+          GMAIL_REFRESH_TOKEN: ${{ secrets.GMAIL_REFRESH_TOKEN }}
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_ALLOWED_USER_IDS: ${{ secrets.LINE_ALLOWED_USER_IDS }}
+        run: npm run verify-gmail-token
+
+
+

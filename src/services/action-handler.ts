@@ -5,6 +5,7 @@ import { getSupabase, isSupabaseAvailable } from '../db/client';
 import { sendGmailMessage } from './gmail';
 import { sendChatworkMessage } from './chatwork';
 import { sendTextMessage } from './line';
+import { addToBlocklist, getBlocklist } from './blocklist';
 
 /**
  * メッセージ情報を取得
@@ -113,6 +114,12 @@ export async function handleLineAction(
     } else if (action === 'acknowledge' || action === 'ack') {
       // 確認メール送信処理
       await handleAcknowledgeAction(userId, message);
+    } else if (action === 'block') {
+      // ブロック処理
+      await handleBlockAction(userId, message);
+    } else if (action === 'blocklist') {
+      // ブロックリスト表示
+      await handleBlocklistAction(userId);
     } else {
       console.error('[アクション処理失敗] 不明なアクション', { action });
       await sendTextMessage(userId, `エラー: 不明なアクション「${action}」です。`);
@@ -292,6 +299,93 @@ ${subject}について、内容を確認いたしました。
   } catch (error: any) {
     console.error('[確認メール送信エラー]', { userId, messageId: message.id, error: error.message });
     await sendTextMessage(userId, 'エラー: 確認メール送信処理中にエラーが発生しました。');
+  }
+}
+
+/**
+ * ブロックアクションを処理
+ */
+async function handleBlockAction(userId: string, message: any): Promise<void> {
+  try {
+    const senderEmail = message.sender_identifier || '';
+    
+    if (!senderEmail) {
+      await sendTextMessage(userId, 'エラー: 送信者のメールアドレスが取得できませんでした。');
+      return;
+    }
+
+    // ユーザーIDを取得（DBのUUID）
+    const supabase = getSupabase();
+    if (!supabase) {
+      await sendTextMessage(userId, 'エラー: データベースに接続できませんでした。');
+      return;
+    }
+
+    // LINE User IDからDB User IDを取得
+    const { data: userData } = await (supabase.from('users') as any)
+      .select('id')
+      .eq('line_user_id', userId)
+      .single();
+
+    if (!userData) {
+      await sendTextMessage(userId, 'エラー: ユーザー情報が見つかりませんでした。');
+      return;
+    }
+
+    const success = await addToBlocklist(userData.id as string, senderEmail);
+
+    if (success) {
+      // メールアドレスを抽出して表示
+      const emailMatch = senderEmail.match(/<([^>]+)>/);
+      const displayEmail = emailMatch ? emailMatch[1] : senderEmail;
+      
+      await sendTextMessage(userId, `🚫 ${displayEmail} をブロックしました。\n\nこのアドレスからのメールは今後通知されません。`);
+      console.log('[ブロックアクション完了]', { messageId: message.id, senderEmail: displayEmail });
+    } else {
+      await sendTextMessage(userId, '❌ ブロック処理に失敗しました。');
+    }
+  } catch (error: any) {
+    console.error('[ブロックアクションエラー]', { userId, messageId: message.id, error: error.message });
+    await sendTextMessage(userId, 'エラー: ブロック処理中にエラーが発生しました。');
+  }
+}
+
+/**
+ * ブロックリスト表示アクションを処理
+ */
+async function handleBlocklistAction(userId: string): Promise<void> {
+  try {
+    // ユーザーIDを取得（DBのUUID）
+    const supabase = getSupabase();
+    if (!supabase) {
+      await sendTextMessage(userId, 'エラー: データベースに接続できませんでした。');
+      return;
+    }
+
+    // LINE User IDからDB User IDを取得
+    const { data: userData } = await (supabase.from('users') as any)
+      .select('id')
+      .eq('line_user_id', userId)
+      .single();
+
+    if (!userData) {
+      await sendTextMessage(userId, 'エラー: ユーザー情報が見つかりませんでした。');
+      return;
+    }
+
+    const blockedEmails = await getBlocklist(userData.id as string);
+
+    if (blockedEmails.length === 0) {
+      await sendTextMessage(userId, '📋 ブロックリストは空です。\n\nメッセージの「🚫ブロック」ボタンを押すと、そのアドレスからの通知をブロックできます。');
+    } else {
+      const emailList = blockedEmails.map((email, index) => `${index + 1}. ${email}`).join('\n');
+      await sendTextMessage(userId, `📋 ブロックリスト:\n\n${emailList}\n\n※ブロック解除は現在開発中です。`);
+    }
+    
+    console.log('[ブロックリスト表示完了]', { userId, count: blockedEmails.length });
+  } catch (error: any) {
+    console.error('[ブロックリスト表示エラー]', { userId, error: error.message });
+    await sendTextMessage(userId, 'エラー: ブロックリスト取得中にエラーが発生しました。');
   }
 }
 

@@ -40,6 +40,10 @@ temp/
 credentials.json
 token.json
 client_secret*.json
+.env.bak
+
+# Test files
+test-files/
 
 
 

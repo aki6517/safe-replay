@@ -42,6 +42,22 @@ export interface AIProvider {
     triageType: TriageType,
     tone?: 'formal' | 'casual' | 'brief'
   ): Promise<string>;
+
+  /**
+   * メッセージをADHD向けに柔らかく変換・要約（LINEBOTがユーザーに語りかける形式）
+   * 
+   * @param context - メッセージコンテキスト
+   * @param senderName - 送信者名（オプション）
+   * @param triageType - トリアージタイプ（オプション）
+   * @param draftReply - 返信案（オプション、Type Aの場合）
+   * @returns 変換されたメッセージテキスト
+   */
+  softenMessage(
+    context: MessageContext,
+    senderName?: string,
+    triageType?: 'A' | 'B' | 'C',
+    draftReply?: string
+  ): Promise<string>;
 }
 
 /**

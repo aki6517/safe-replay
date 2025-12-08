@@ -134,4 +134,49 @@ export function buildDraftPrompt(
   return parts.join('\n');
 }
 
+/**
+ * ADHD向けメッセージ柔軟化プロンプトを構築（LINEBOTがユーザーに語りかける形式）
+ */
+export function buildSoftenPrompt(
+  context: MessageContext,
+  senderName?: string,
+  triageType?: 'A' | 'B' | 'C',
+  draftReply?: string
+): string {
+  const parts: string[] = [];
+
+  parts.push('あなたは、ADHDを持つユーザーをサポートする優しいLINEBOTです。');
+  parts.push('以下のメッセージを**150文字以内**で優しく要約してください。');
+  parts.push('');
+  parts.push('## ルール');
+  parts.push('1. 「○○さんから〜だよ」という形式で始める');
+  parts.push('2. 責められていないことを伝える（例：困っているみたい、確認したいみたい）');
+  parts.push('3. 次にやることを1つだけ提案する');
+  parts.push('4. 親しみやすい口調（だよ、みたいだよ、しようか）');
+  parts.push('');
+  parts.push('## 例');
+  parts.push('「○○さんから請求書の件だよ。怒ってるわけじゃなくて、届いてないから困ってるみたい。請求書送ってあげようか。」');
+  parts.push('');
+  parts.push('## ⚠️ 重要：150文字以内で簡潔に！');
+  parts.push('');
+
+  if (senderName) {
+    parts.push(`送信者: ${senderName}`);
+  }
+  if (context.subject) {
+    parts.push(`件名: ${context.subject}`);
+  }
+  parts.push(`本文: ${context.body.substring(0, 500)}`); // 本文は500文字まで
+  parts.push('');
+
+  if (triageType === 'A' && draftReply) {
+    parts.push('※返信案あり→「返信文を考えたよ」と一言添える');
+  }
+
+  parts.push('');
+  parts.push('150文字以内で出力してください。');
+
+  return parts.join('\n');
+}
+
 

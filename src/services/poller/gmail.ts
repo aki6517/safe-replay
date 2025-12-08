@@ -6,13 +6,16 @@ import {
   extractMessageBody,
   extractMessageHeaders,
   getThreadHistory,
-  isGmailClientAvailable
+  isGmailClientAvailable,
+  type GmailMessage
 } from '../gmail';
+import { gmail_v1 } from 'googleapis';
 import { redis, isRedisAvailable } from '../../db/redis';
 import { getSupabase } from '../../db/client';
 import { triageMessage } from '../../ai/triage';
 import { generateDraft } from '../../ai/draft';
 import { sendLineNotification } from '../notifier';
+import { isBlocked } from '../blocklist';
 
 /**
  * 処理済みメッセージIDをRedisから取得
@@ -150,8 +153,8 @@ export async function pollGmail(
       }
     }
 
-    // 未読メールを取得
-    const messages = await getUnreadMessages(maxResults);
+    // 過去3日分のメールを取得（迷惑メール・ゴミ箱を除外）
+    const messages = await getUnreadMessages(maxResults, 3);
     let messagesNew = 0;
     let messagesSkipped = 0;
     let attachmentsParsed = 0;
@@ -164,12 +167,37 @@ export async function pollGmail(
         // 既に処理済みのメッセージはスキップ
         if (processedIds.has(message.id)) {
           messagesSkipped++;
+          console.log('[処理済みメッセージをスキップ]', {
+            messageId: message.id,
+            subject: extractMessageHeaders(message).subject || '(件名なし)'
+          });
           continue;
         }
 
         // メッセージ本文とヘッダーを抽出
         const body = extractMessageBody(message);
         const headers = extractMessageHeaders(message);
+
+        // ブロックチェック
+        if (userId && headers.from) {
+          const blocked = await isBlocked(userId, headers.from);
+          if (blocked) {
+            messagesSkipped++;
+            console.log('[ブロック済みアドレスをスキップ]', {
+              messageId: message.id,
+              from: headers.from
+            });
+            // 処理済みとしてマーク（再度チェックしないように）
+            await markMessageAsProcessed(userId, message.id);
+            continue;
+          }
+        }
+        
+        console.log('[新規メッセージを処理開始]', {
+          messageId: message.id,
+          subject: headers.subject || '(件名なし)',
+          from: headers.from || 'Unknown'
+        });
 
         // メッセージ詳細を記録
         const messageDetail = {
@@ -197,10 +225,12 @@ export async function pollGmail(
               subject: headers.subject || null,
               body_plain: body || null,
               extracted_content: body || null,
-              received_at: new Date(parseInt(message.internalDate)).toISOString(),
+              received_at: message.internalDate 
+                ? new Date(parseInt(message.internalDate)).toISOString()
+                : new Date().toISOString(),
               status: 'pending' as const,
               metadata: {
-                labelIds: message.labelIds,
+                labelIds: message.labelIds || [],
                 snippet: message.snippet
               } as Record<string, unknown>
             };
@@ -211,8 +241,19 @@ export async function pollGmail(
               // 重複エラーは無視（既に処理済み）
               if (dbError.code !== '23505') {
                 errors.push(`Database error for message ${message.id}: ${dbError.message}`);
+                console.error('[DB保存エラー]', {
+                  messageId: message.id,
+                  subject: headers.subject || '(件名なし)',
+                  error: dbError.message,
+                  code: dbError.code
+                });
               } else {
                 messagesSkipped++;
+                console.log('[重複メッセージをスキップ]', {
+                  messageId: message.id,
+                  subject: headers.subject || '(件名なし)',
+                  reason: '既にDBに保存済み'
+                });
                 continue;
               }
             } else {
@@ -227,11 +268,11 @@ export async function pollGmail(
                     const threadMessages = await getThreadHistory(message.threadId);
                     // 現在のメッセージ以外の過去5件を取得
                     const previousMessages = threadMessages
-                      .filter(m => m.id !== message.id)
+                      .filter((m: GmailMessage) => m.id !== message.id)
                       .slice(-5);
                     
                     threadContext = previousMessages
-                      .map(m => {
+                      .map((m: GmailMessage) => {
                         const h = extractMessageHeaders(m);
                         const b = extractMessageBody(m);
                         return `【${h.from || 'Unknown'}】${b.substring(0, 200)}`;
@@ -250,6 +291,16 @@ export async function pollGmail(
                     threadContext || undefined
                   );
 
+                  // トリアージ結果をログに出力（デバッグ用）
+                  console.log('[トリアージ結果]', {
+                    messageId: message.id,
+                    subject: headers.subject || '(件名なし)',
+                    type: triageResult.type,
+                    confidence: triageResult.confidence,
+                    priority_score: triageResult.priority_score,
+                    reason: triageResult.reason?.substring(0, 100) // 最初の100文字のみ
+                  });
+
                   // トリアージ結果をDBに更新
                   await (supabase.from('messages') as any).update({
                     triage_type: triageResult.type,
@@ -264,9 +315,9 @@ export async function pollGmail(
                   // LINE User IDを取得（effectiveLineUserIdを使用）
                   const lineUserIdForNotification = effectiveLineUserId;
 
-                  // Type Aの場合はドラフト生成
+                  // 全メッセージ（Type A, B）にドラフト生成（Type Cは通知しないので不要）
                   let draft: string | undefined;
-                  if (triageResult.type === 'A') {
+                  if (triageResult.type === 'A' || triageResult.type === 'B') {
                     try {
                       draft = await generateDraft(
                         headers.subject || '',
@@ -274,6 +325,11 @@ export async function pollGmail(
                         triageResult.type,
                         threadContext || undefined
                       );
+                      console.log('[ドラフト生成完了]', {
+                        messageId: message.id,
+                        triageType: triageResult.type,
+                        draftLength: draft?.length || 0
+                      });
                     } catch (draftError: any) {
                       console.warn(`Failed to generate draft for message ${message.id}:`, draftError.message);
                     }
@@ -282,13 +338,52 @@ export async function pollGmail(
                   // LINE通知を送信
                   if (lineUserIdForNotification) {
                     try {
+                      // ADHD向けにメッセージを柔らかく変換（LINEBOTがユーザーに語りかける形式）
+                      let softenedBody = '';
+                      try {
+                        const { softenMessage } = await import('../../ai/soften');
+                        // 送信者名を抽出（"名前 <email>" または "名前" の形式から名前を抽出）
+                        const senderName = headers.from 
+                          ? headers.from.replace(/<[^>]+>/g, '').trim() // メールアドレス部分を削除
+                          : undefined;
+                        
+                        softenedBody = await softenMessage(
+                          headers.subject || '',
+                          body,
+                          senderName,
+                          triageResult.type,
+                          draft, // 返信案も含める
+                          threadContext || undefined
+                        );
+                        
+                        // softenedBodyが空または元のメッセージと同じ場合は、簡易フォールバック
+                        if (!softenedBody || softenedBody === body) {
+                          const displaySender = senderName || headers.from || '送信者';
+                          softenedBody = `${displaySender}さんからメッセージが届いたよ。内容を確認してね。`;
+                        }
+                        
+                        console.log('[メッセージ変換完了]', {
+                          messageId: message.id,
+                          originalLength: body.length,
+                          softenedLength: softenedBody.length,
+                          triageType: triageResult.type
+                        });
+                      } catch (softenError: any) {
+                        console.warn(`Failed to soften message ${message.id}:`, softenError.message);
+                        // エラー時は簡易フォールバック
+                        const senderName = headers.from 
+                          ? headers.from.replace(/<[^>]+>/g, '').trim()
+                          : '送信者';
+                        softenedBody = `${senderName}さんからメッセージが届いたよ。内容を確認してね。`;
+                      }
+
                       await sendLineNotification(
                         lineUserIdForNotification,
                         messageId,
                         triageResult.type,
                         {
                           subject: headers.subject,
-                          body: body.substring(0, 500), // 最初の500文字のみ
+                          body: softenedBody.substring(0, 400), // 簡潔に
                           sender: headers.from || 'Unknown',
                           source: 'Gmail'
                         },
@@ -317,7 +412,7 @@ export async function pollGmail(
         // 添付ファイルの数をカウント（簡易版）
         if (message.payload?.parts) {
           const attachmentParts = message.payload.parts.filter(
-            part => part.filename && part.filename.length > 0
+            (part: gmail_v1.Schema$MessagePart) => part.filename && part.filename.length > 0
           );
           attachmentsParsed += attachmentParts.length;
         }

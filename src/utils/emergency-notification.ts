@@ -147,11 +147,13 @@ export async function sendEmergencyNotification(
  * 
  * @param serviceName - サービス名（例: 'Gmail', 'Chatwork', 'OpenAI'）
  * @param errorMessage - エラーメッセージ
+ * @param authUrl - 再認証用のURL（オプション）
  * @returns 成功時true、失敗時false
  */
 export async function notifyApiTokenExpired(
   serviceName: string,
-  errorMessage: string
+  errorMessage: string,
+  authUrl?: string
 ): Promise<boolean> {
   const notificationKey = `${serviceName.toLowerCase()}_token_expired`;
 
@@ -163,12 +165,35 @@ export async function notifyApiTokenExpired(
 
   const title = `${serviceName} APIトークン失効`;
   const message = `${serviceName}のAPIトークンが失効または無効です。`;
-  const details = `エラー詳細: ${errorMessage}\n\n設定を確認し、新しいトークンを設定してください。`;
+  
+  let details = `エラー詳細: ${errorMessage}\n\n`;
+  
+  if (authUrl) {
+    details += `【再認証手順】\n`;
+    details += `1. 以下のURLをブラウザで開いて認証してください\n`;
+    details += `${authUrl}\n\n`;
+    details += `2. 認証後に表示されたコードをコピーしてください\n`;
+    details += `3. ターミナルで以下のコマンドを実行してください:\n`;
+    details += `   npm run get-gmail-refresh-token\n`;
+    details += `4. 表示されたコードを貼り付けてEnterキーを押してください\n`;
+    details += `5. 新しいリフレッシュトークンを.envファイルに設定してください\n`;
+  } else {
+    details += `【再認証手順】\n`;
+    details += `1. ターミナルで以下のコマンドを実行してください:\n`;
+    details += `   npm run get-gmail-refresh-token\n`;
+    details += `2. 表示されたURLをブラウザで開いて認証してください\n`;
+    details += `3. 認証後に表示されたコードをコピーしてください\n`;
+    details += `4. ターミナルにコードを貼り付けてEnterキーを押してください\n`;
+    details += `5. 新しいリフレッシュトークンを.envファイルに設定してください\n`;
+  }
+  
+  details += `\n詳細は docs/GMAIL-TOKEN-AUTO-REFRESH.md を参照してください。`;
 
   return await sendEmergencyNotification(title, message, {
     severity: 'critical',
     details,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    actionUrl: authUrl // 認証URLがある場合はボタンとして表示
   });
 }
 

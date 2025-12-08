@@ -7,12 +7,14 @@
  */
 import type { FlexMessage, FlexBubble, FlexBox, FlexText, FlexSeparator, FlexButton } from '@line/bot-sdk';
 
+
 export interface TypeBFlexMessageData {
   messageId: string;
   subject?: string;
   body: string;
   sender: string;
   source: string;
+  draft?: string; // 返信案（オプション）
 }
 
 /**
@@ -22,10 +24,13 @@ export interface TypeBFlexMessageData {
  * @returns Flex Messageオブジェクト
  */
 export function createTypeBFlexMessage(data: TypeBFlexMessageData): FlexMessage {
-  const { messageId, subject, body, sender, source } = data;
+  const { messageId, subject, body, sender, source, draft } = data;
 
-  // 本文を200文字に制限（プレビュー用）
-  const bodyPreview = body.length > 200 ? `${body.substring(0, 200)}...` : body;
+  // 本文を300文字に制限
+  const bodyPreview = body.length > 300 ? `${body.substring(0, 300)}...` : body;
+  
+  // 返信案を200文字に制限（プレビュー用）
+  const draftPreview = draft ? (draft.length > 200 ? `${draft.substring(0, 200)}...` : draft) : null;
 
   // ヘッダーコンテンツ
   const headerContents: FlexText[] = [
@@ -95,19 +100,12 @@ export function createTypeBFlexMessage(data: TypeBFlexMessageData): FlexMessage 
     });
   }
 
-  // メッセージ内容
+  // メッセージ内容（語りかけ形式）
   bodyContents.push(
     {
       type: 'box',
       layout: 'vertical',
       contents: [
-        {
-          type: 'text',
-          text: 'メッセージ内容',
-          size: 'xs',
-          color: '#888888',
-          margin: 'md'
-        } as FlexText,
         {
           type: 'text',
           text: bodyPreview,
@@ -119,31 +117,118 @@ export function createTypeBFlexMessage(data: TypeBFlexMessageData): FlexMessage 
     }
   );
 
+  // 返信案がある場合は表示
+  if (draftPreview) {
+    bodyContents.push(
+      {
+        type: 'separator',
+        margin: 'lg'
+      },
+      {
+        type: 'box',
+        layout: 'vertical',
+        contents: [
+          {
+            type: 'text',
+            text: '返信案',
+            size: 'xs',
+            color: '#888888',
+            margin: 'md'
+          } as FlexText,
+          {
+            type: 'text',
+            text: draftPreview,
+            size: 'sm',
+            wrap: true,
+            color: '#0066CC'
+          } as FlexText
+        ],
+        margin: 'md',
+        backgroundColor: '#F0F8FF',
+        paddingAll: 'sm',
+        cornerRadius: 'md'
+      }
+    );
+  }
+
   // フッターコンテンツ（ボタン）
-  const footerContents: FlexButton[] = [
-    {
-      type: 'button',
-      action: {
-        type: 'postback',
-        label: '既読',
-        data: `action=read&message_id=${messageId}`,
-        displayText: '既読にしました'
-      },
-      style: 'primary',
-      color: '#4CAF50'
+  const footerContents: (FlexBox | FlexButton)[] = [];
+  
+  // 返信案がある場合は送信ボタンを追加
+  if (draftPreview) {
+    footerContents.push({
+      type: 'box',
+      layout: 'horizontal',
+      contents: [
+        {
+          type: 'button',
+          action: {
+            type: 'postback',
+            label: '返信送信',
+            data: `action=send&message_id=${messageId}`,
+            displayText: '返信を送信します'
+          },
+          style: 'primary',
+          color: '#0066CC'
+        } as FlexButton,
+        {
+          type: 'button',
+          action: {
+            type: 'postback',
+            label: '既読',
+            data: `action=read&message_id=${messageId}`,
+            displayText: '既読にしました'
+          },
+          style: 'secondary',
+          color: '#4CAF50'
+        } as FlexButton
+      ],
+      spacing: 'sm'
+    });
+  } else {
+    footerContents.push({
+      type: 'box',
+      layout: 'horizontal',
+      contents: [
+        {
+          type: 'button',
+          action: {
+            type: 'postback',
+            label: '既読',
+            data: `action=read&message_id=${messageId}`,
+            displayText: '既読にしました'
+          },
+          style: 'primary',
+          color: '#4CAF50'
+        } as FlexButton,
+        {
+          type: 'button',
+          action: {
+            type: 'postback',
+            label: '確認メール',
+            data: `action=acknowledge&message_id=${messageId}`,
+            displayText: '確認メールを送信します'
+          },
+          style: 'secondary',
+          color: '#2196F3'
+        } as FlexButton
+      ],
+      spacing: 'sm'
+    });
+  }
+
+  footerContents.push({
+    type: 'button',
+    action: {
+      type: 'postback',
+      label: '🚫ブロック',
+      data: `action=block&message_id=${messageId}`,
+      displayText: 'この送信者をブロックします'
     },
-    {
-      type: 'button',
-      action: {
-        type: 'postback',
-        label: '確認メール',
-        data: `action=acknowledge&message_id=${messageId}`,
-        displayText: '確認メールを送信します'
-      },
-      style: 'secondary',
-      color: '#2196F3'
-    }
-  ];
+    style: 'secondary',
+    color: '#888888',
+    margin: 'sm'
+  });
 
   const bubble: FlexBubble = {
     type: 'bubble',
@@ -161,7 +246,7 @@ export function createTypeBFlexMessage(data: TypeBFlexMessageData): FlexMessage 
     },
     footer: {
       type: 'box',
-      layout: 'horizontal',
+      layout: 'vertical',
       contents: footerContents,
       spacing: 'sm',
       paddingAll: 'lg'

@@ -25,8 +25,8 @@ export interface TypeAFlexMessageData {
 export function createTypeAFlexMessage(data: TypeAFlexMessageData): FlexMessage {
   const { messageId, subject, body, sender, source, draft } = data;
 
-  // 本文を200文字に制限（プレビュー用）
-  const bodyPreview = body.length > 200 ? `${body.substring(0, 200)}...` : body;
+  // 本文を400文字に制限（語りかけ形式なので少し長めに）
+  const bodyPreview = body.length > 400 ? `${body.substring(0, 400)}...` : body;
   
   // 返信案を300文字に制限（プレビュー用）
   const draftPreview = draft.length > 300 ? `${draft.substring(0, 300)}...` : draft;
@@ -99,19 +99,12 @@ export function createTypeAFlexMessage(data: TypeAFlexMessageData): FlexMessage 
     });
   }
 
-  // メッセージ内容
+  // メッセージ内容（語りかけ形式）
   bodyContents.push(
     {
       type: 'box',
       layout: 'vertical',
       contents: [
-        {
-          type: 'text',
-          text: 'メッセージ内容',
-          size: 'xs',
-          color: '#888888',
-          margin: 'md'
-        } as FlexText,
         {
           type: 'text',
           text: bodyPreview,
@@ -185,15 +178,33 @@ export function createTypeAFlexMessage(data: TypeAFlexMessageData): FlexMessage 
       spacing: 'sm'
     },
     {
-      type: 'button',
-      action: {
-        type: 'postback',
-        label: '断る',
-        data: `action=dismiss&message_id=${messageId}`,
-        displayText: '返信を断ります'
-      },
-      style: 'secondary',
-      color: '#FF6B6B',
+      type: 'box',
+      layout: 'horizontal',
+      contents: [
+        {
+          type: 'button',
+          action: {
+            type: 'postback',
+            label: '断る',
+            data: `action=dismiss&message_id=${messageId}`,
+            displayText: '返信を断ります'
+          },
+          style: 'secondary',
+          color: '#FF6B6B'
+        } as FlexButton,
+        {
+          type: 'button',
+          action: {
+            type: 'postback',
+            label: '🚫ブロック',
+            data: `action=block&message_id=${messageId}`,
+            displayText: 'この送信者をブロックします'
+          },
+          style: 'secondary',
+          color: '#888888'
+        } as FlexButton
+      ],
+      spacing: 'sm',
       margin: 'sm'
     }
   ];

@@ -22,7 +22,10 @@
     "test-line-action-handler": "tsx scripts/test-line-action-handler.ts",
     "test-whitelist": "tsx scripts/test-whitelist.ts",
     "test-supabase-connection": "tsx scripts/test-supabase-connection.ts",
-    "test-emergency-notification": "tsx scripts/test-emergency-notification.ts"
+    "test-emergency-notification": "tsx scripts/test-emergency-notification.ts",
+    "create-test-files": "tsx scripts/create-test-files.ts",
+    "clear-processed-messages": "tsx scripts/clear-processed-messages.ts",
+    "verify-gmail-token": "tsx scripts/verify-gmail-token.ts"
   },
   "keywords": [
     "ai",
@@ -55,7 +58,9 @@
     "@types/xml2js": "^0.4.14",
     "@typescript-eslint/eslint-plugin": "^6.15.0",
     "@typescript-eslint/parser": "^6.15.0",
+    "docx": "^9.5.1",
     "eslint": "^8.56.0",
+    "pptxgenjs": "^4.0.1",
     "prettier": "^3.1.1",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"

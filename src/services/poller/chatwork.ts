@@ -265,13 +265,36 @@ export async function pollChatwork(
                   // LINE通知を送信
                   if (lineUserIdForNotification) {
                     try {
+                      // ADHD向けにメッセージを柔らかく変換（LINEBOTがユーザーに語りかける形式）
+                      let softenedBody = messageText;
+                      try {
+                        const { softenMessage } = await import('../../ai/soften');
+                        softenedBody = await softenMessage(
+                          '', // Chatworkには件名がない
+                          messageText,
+                          message.account.name || undefined, // 送信者名
+                          triageResult.type,
+                          draft, // Type Aの場合は返信案も含める
+                          undefined // Chatworkにはスレッド履歴がない
+                        );
+                        console.log('[メッセージ変換完了]', {
+                          messageId: message.message_id,
+                          originalLength: messageText.length,
+                          softenedLength: softenedBody.length,
+                          triageType: triageResult.type
+                        });
+                      } catch (softenError: any) {
+                        console.warn(`Failed to soften message ${message.message_id}:`, softenError.message);
+                        // エラー時は元のメッセージを使用
+                      }
+
                       await sendLineNotification(
                         lineUserIdForNotification,
                         messageId,
                         triageResult.type,
                         {
                           subject: undefined, // Chatworkには件名がない
-                          body: messageText.substring(0, 500), // 最初の500文字のみ
+                          body: softenedBody.substring(0, 800), // 語りかけ形式なので少し長めに
                           sender: message.account.name || 'Unknown',
                           source: 'Chatwork'
                         },

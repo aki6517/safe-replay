@@ -145,13 +145,36 @@ export async function processForwardedMessage(
 
         // LINE通知を送信
         try {
+          // ADHD向けにメッセージを柔らかく変換（LINEBOTがユーザーに語りかける形式）
+          let softenedBody = text;
+          try {
+            const { softenMessage } = await import('../ai/soften');
+            softenedBody = await softenMessage(
+              '', // LINE転送には件名がない
+              text,
+              'LINE転送', // 送信者名
+              triageResult.type,
+              draft, // Type Aの場合は返信案も含める
+              undefined // LINE転送にはスレッド履歴がない
+            );
+            console.log('[メッセージ変換完了]', {
+              messageId,
+              originalLength: text.length,
+              softenedLength: softenedBody.length,
+              triageType: triageResult.type
+            });
+          } catch (softenError: any) {
+            console.warn(`[メッセージ変換失敗]`, { messageId, error: softenError.message });
+            // エラー時は元のメッセージを使用
+          }
+
           await sendLineNotification(
             lineUserId,
             messageId,
             triageResult.type,
             {
               subject: undefined, // LINE転送には件名がない
-              body: text.substring(0, 500), // 最初の500文字のみ
+              body: softenedBody.substring(0, 800), // 語りかけ形式なので少し長めに
               sender: 'LINE転送',
               source: 'LINE転送'
             },

@@ -44,15 +44,15 @@ async function testGmailAPI() {
   }
   console.log('   ✅ Gmail APIクライアントが利用可能です\n');
 
-  // 3. 未読メールの取得
-  console.log('3️⃣ 未読メールの取得...');
+  // 3. 過去3日分のメールの取得（迷惑メール・ゴミ箱を除外）
+  console.log('3️⃣ 過去3日分のメールの取得（迷惑メール・ゴミ箱を除外）...');
   try {
-    const messages = await getUnreadMessages(5); // 最大5件取得
-    console.log(`   ✅ ${messages.length}件の未読メールを取得しました\n`);
+    const messages = await getUnreadMessages(5, 3); // 最大5件取得、過去3日分
+    console.log(`   ✅ ${messages.length}件のメールを取得しました\n`);
 
     if (messages.length === 0) {
-      console.log('   ℹ️  未読メールがありません');
-      console.log('   💡 テスト用にGmailアカウントに未読メールを作成してください\n');
+      console.log('   ℹ️  過去3日分のメールがありません');
+      console.log('   💡 テスト用にGmailアカウントにメールを作成してください\n');
     } else {
       // 4. メッセージの詳細表示
       console.log('4️⃣ メッセージの詳細表示...\n');

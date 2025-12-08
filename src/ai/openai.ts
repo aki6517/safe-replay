@@ -4,7 +4,7 @@
 import OpenAI from 'openai';
 import type { AIProvider, MessageContext, AIProviderConfig } from './provider';
 import type { TriageResult, TriageType } from '../types/triage';
-import { buildTriagePrompt, buildDraftPrompt } from './prompts';
+import { buildTriagePrompt, buildDraftPrompt, buildSoftenPrompt } from './prompts';
 
 /**
  * OpenAI Providerクラス
@@ -86,6 +86,31 @@ export class OpenAIProvider implements AIProvider {
   }
 
   /**
+   * メッセージをADHD向けに柔らかく変換・要約（LINEBOTがユーザーに語りかける形式）
+   */
+  async softenMessage(
+    context: MessageContext,
+    senderName?: string,
+    triageType?: 'A' | 'B' | 'C',
+    draftReply?: string
+  ): Promise<string> {
+    const prompt = buildSoftenPrompt(context, senderName, triageType, draftReply);
+
+    try {
+      const response = await this.callAPI(prompt, {
+        temperature: 0.6, // 簡潔さを優先するため少し低めに
+        maxTokens: 300 // 150文字程度の出力を想定
+      });
+
+      return this.parseDraftResponse(response); // 同じパースロジックを使用
+    } catch (error: any) {
+      console.error('OpenAI soften message error:', error);
+      // エラー時は元のメッセージを返す（フォールバック）
+      return context.body;
+    }
+  }
+
+  /**
    * OpenAI APIを呼び出し（リトライロジック付き）
    */
   private async callAPI(
@@ -124,9 +149,26 @@ export class OpenAIProvider implements AIProvider {
 
         const response = await this.client.chat.completions.create(requestParams);
 
+        // デバッグ用: レスポンスの詳細をログに出力
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[OpenAI API Response]', {
+            model: response.model,
+            choicesCount: response.choices?.length || 0,
+            finishReason: response.choices[0]?.finish_reason,
+            hasContent: !!response.choices[0]?.message?.content,
+            contentLength: response.choices[0]?.message?.content?.length || 0
+          });
+        }
+
         const content = response.choices[0]?.message?.content;
         if (!content) {
-          throw new Error('Empty response from OpenAI');
+          const finishReason = response.choices[0]?.finish_reason;
+          const errorMsg = finishReason === 'length' 
+            ? 'Response was truncated due to max_tokens limit'
+            : finishReason === 'content_filter'
+            ? 'Response was filtered by content filter'
+            : `Empty response from OpenAI (finish_reason: ${finishReason || 'unknown'})`;
+          throw new Error(errorMsg);
         }
 
         return content;

@@ -1,189 +1,354 @@
 /**
  * Gmail API サービス
+ * 
+ * Gmail APIを使用したメール取得・送信機能を提供
  */
 import { google } from 'googleapis';
-import type { gmail_v1 } from 'googleapis';
+import { gmail_v1 } from 'googleapis';
+import { OAuth2Client } from 'google-auth-library';
+import { notifyApiTokenExpired } from '../utils/emergency-notification';
+
+// Gmail APIクライアントのシングルトンインスタンス
+let gmailClient: gmail_v1.Gmail | null = null;
+let oauth2Client: OAuth2Client | null = null;
+
+/**
+ * リフレッシュトークン失効エラーかどうかを判定
+ */
+function isTokenExpiredError(error: any): boolean {
+  if (!error) return false;
+  
+  const errorMessage = error.message || error.toString();
+  const errorCode = error.code;
+  
+  // 一般的なトークン失効エラーメッセージ
+  const expiredPatterns = [
+    'invalid_grant',
+    'Token has been expired',
+    'Token has been revoked',
+    'invalid_token',
+    'unauthorized_client',
+    'access_denied'
+  ];
+  
+  return expiredPatterns.some(pattern => 
+    errorMessage.toLowerCase().includes(pattern.toLowerCase()) ||
+    errorCode === pattern
+  );
+}
+
+/**
+ * Gmail APIエラーを処理し、必要に応じてLINE通知を送信
+ */
+async function handleGmailApiError(error: any, operation: string): Promise<void> {
+  if (isTokenExpiredError(error)) {
+    console.error(`[Gmail API] トークン失効エラー検出: ${operation}`, {
+      error: error.message,
+      code: error.code
+    });
+    
+    // 再認証用のURLを生成
+    const clientId = process.env.GMAIL_CLIENT_ID;
+    const clientSecret = process.env.GMAIL_CLIENT_SECRET;
+    let authUrl: string | undefined;
+    
+    if (clientId && clientSecret) {
+      try {
+        const { google } = await import('googleapis');
+        const tempOAuth2Client = new google.auth.OAuth2(
+          clientId,
+          clientSecret,
+          'urn:ietf:wg:oauth:2.0:oob'
+        );
+        authUrl = tempOAuth2Client.generateAuthUrl({
+          access_type: 'offline',
+          scope: ['https://www.googleapis.com/auth/gmail.readonly'],
+          prompt: 'consent'
+        });
+      } catch (urlError) {
+        console.error('[Gmail API] 認証URL生成エラー:', urlError);
+      }
+    }
+    
+    // LINE緊急通知を送信（重複防止機能が組み込まれている）
+    await notifyApiTokenExpired(
+      'Gmail',
+      error.message || 'Token has been expired or revoked.',
+      authUrl
+    );
+    
+    // クライアントをリセット（次回初期化時に再試行）
+    gmailClient = null;
+    oauth2Client = null;
+  } else {
+    console.error(`[Gmail API] エラー: ${operation}`, {
+      error: error.message,
+      code: error.code
+    });
+  }
+}
 
 /**
  * Gmail APIクライアントを初期化
  */
-function createGmailClient(): gmail_v1.Gmail | null {
-  // 環境変数から認証情報を取得（関数内で読み込むことで、dotenv.config()後に確実に読み込まれる）
+function initializeGmailClient(): gmail_v1.Gmail | null {
+  if (gmailClient) {
+    return gmailClient;
+  }
+
   const clientId = process.env.GMAIL_CLIENT_ID;
   const clientSecret = process.env.GMAIL_CLIENT_SECRET;
   const refreshToken = process.env.GMAIL_REFRESH_TOKEN;
 
   if (!clientId || !clientSecret || !refreshToken) {
-    console.warn('⚠️  Gmail API credentials not configured');
     return null;
   }
 
   try {
-    const oauth2Client = new google.auth.OAuth2(
+    oauth2Client = new google.auth.OAuth2(
       clientId,
       clientSecret,
-      'urn:ietf:wg:oauth:2.0:oob' // リダイレクトURI（OAuth 2.0 for Server to Server）
+      'urn:ietf:wg:oauth:2.0:oob'
     );
 
-    // リフレッシュトークンを設定
     oauth2Client.setCredentials({
       refresh_token: refreshToken
     });
 
-    // トークンを自動リフレッシュ
-    oauth2Client.on('tokens', (tokens) => {
-      if (tokens.refresh_token) {
-        // リフレッシュトークンが更新された場合は保存が必要（将来実装）
-        console.log('Refresh token updated');
-      }
-    });
-
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-    return gmail;
+    // トークン自動リフレッシュの設定
+    // googleapisライブラリは自動的にアクセストークンをリフレッシュしますが、
+    // リフレッシュトークン自体が失効した場合はエラーが発生します
+    
+    gmailClient = google.gmail({ version: 'v1', auth: oauth2Client });
+    return gmailClient;
   } catch (error) {
-    console.error('Gmail API client initialization error:', error);
+    console.error('Failed to initialize Gmail client:', error);
     return null;
   }
 }
 
-let gmailClient: gmail_v1.Gmail | null = null;
-
-// クライアントが利用可能かチェックする関数
+/**
+ * Gmail APIクライアントが利用可能かチェック
+ */
 export function isGmailClientAvailable(): boolean {
-  if (!gmailClient) {
-    gmailClient = createGmailClient();
-  }
-  return gmailClient !== null;
-}
-
-// クライアントを取得（利用可能でない場合はエラー）
-export function getGmailClient(): gmail_v1.Gmail {
-  if (!gmailClient) {
-    gmailClient = createGmailClient();
-  }
-  if (!gmailClient) {
-    throw new Error('Gmail API credentials not configured');
-  }
-  return gmailClient;
+  const client = initializeGmailClient();
+  return client !== null;
 }
 
 /**
- * Gmailメッセージの型定義
+ * メッセージの型定義
  */
 export interface GmailMessage {
   id: string;
   threadId: string;
-  labelIds: string[];
   snippet: string;
-  historyId: string;
-  internalDate: string;
   payload?: gmail_v1.Schema$MessagePart;
-  sizeEstimate?: number;
-  raw?: string;
+  internalDate?: string;
+  labelIds?: string[];
 }
 
 /**
- * 未読メールを取得
+ * メッセージヘッダーの型定義
+ */
+export interface MessageHeaders {
+  from?: string;
+  to?: string;
+  subject?: string;
+  date?: string;
+  messageId?: string;
+}
+
+/**
+ * 過去指定日数分のメールを取得（迷惑メール・ゴミ箱を除外）
  * 
  * @param maxResults - 取得する最大件数（デフォルト: 50）
- * @returns 未読メールのリスト
+ * @param daysBack - 過去何日分のメールを取得するか（デフォルト: 3）
+ * @returns メールの配列
  */
-export async function getUnreadMessages(maxResults: number = 50): Promise<GmailMessage[]> {
-  if (!isGmailClientAvailable()) {
-    throw new Error('Gmail API credentials not configured');
+export async function getUnreadMessages(maxResults: number = 50, daysBack: number = 3): Promise<GmailMessage[]> {
+  const client = initializeGmailClient();
+  if (!client) {
+    throw new Error('Gmail API client is not available');
   }
 
-  const client = getGmailClient();
-
   try {
-    // 未読メールのリストを取得
+    // 過去N日前の日時を計算（UNIXタイムスタンプ（秒））
+    const now = Date.now();
+    const daysAgo = new Date(now - daysBack * 24 * 60 * 60 * 1000);
+    const daysAgoUnixSeconds = Math.floor(daysAgo.getTime() / 1000);
+    
+    // Gmail APIクエリ: 過去N日分のメールを取得し、迷惑メール・ゴミ箱・削除済みを除外
+    // -in:spam: 迷惑メールを除外
+    // -in:trash: ゴミ箱を除外
+    // -is:deleted: 削除済みを除外
+    // after: 指定日時以降のメールを取得
+    const query = `after:${daysAgoUnixSeconds} -in:spam -in:trash -is:deleted`;
+    
+    // メールのリストを取得
     const response = await client.users.messages.list({
       userId: 'me',
-      q: 'is:unread',
-      maxResults
+      q: query,
+      maxResults: Math.min(maxResults, 500) // Gmail APIの上限は500
     });
 
-    const messages = response.data.messages || [];
-    const messageDetails: GmailMessage[] = [];
+    if (!response.data.messages || response.data.messages.length === 0) {
+      return [];
+    }
 
     // 各メッセージの詳細を取得
-    for (const message of messages) {
-      if (!message.id) {
-        continue;
+    const messagePromises = response.data.messages.map(async (msg) => {
+      if (!msg.id) {
+        return null;
       }
 
       try {
-        const detailResponse = await client.users.messages.get({
+        const messageResponse = await client.users.messages.get({
           userId: 'me',
-          id: message.id,
+          id: msg.id,
           format: 'full'
         });
 
-        const messageData = detailResponse.data;
-        messageDetails.push({
-          id: messageData.id || '',
-          threadId: messageData.threadId || '',
-          labelIds: messageData.labelIds || [],
-          snippet: messageData.snippet || '',
-          historyId: messageData.historyId || '',
-          internalDate: messageData.internalDate || '',
-          payload: messageData.payload,
-          sizeEstimate: messageData.sizeEstimate ?? undefined,
-          raw: messageData.raw ?? undefined
-        });
-      } catch (error) {
-        console.error(`Failed to get message details for ${message.id}:`, error);
-        // エラーが発生しても次のメッセージの処理を続ける
+        return {
+          id: messageResponse.data.id || '',
+          threadId: messageResponse.data.threadId || '',
+          snippet: messageResponse.data.snippet || '',
+          payload: messageResponse.data.payload,
+          internalDate: messageResponse.data.internalDate,
+          labelIds: messageResponse.data.labelIds || []
+        } as GmailMessage;
+      } catch (error: any) {
+        console.error(`Failed to get message ${msg.id}:`, error.message);
+        return null;
       }
+    });
+
+    const messages = await Promise.all(messagePromises);
+    return messages.filter((msg): msg is GmailMessage => msg !== null);
+  } catch (error: any) {
+    await handleGmailApiError(error, 'getUnreadMessages');
+    throw new Error(`Gmail API error: ${error.message}`);
+  }
+}
+
+/**
+ * メッセージヘッダーを抽出
+ * 
+ * @param message - Gmailメッセージオブジェクト
+ * @returns ヘッダー情報
+ */
+export function extractMessageHeaders(message: GmailMessage): MessageHeaders {
+  const headers: MessageHeaders = {};
+
+  if (!message.payload || !message.payload.headers) {
+    return headers;
+  }
+
+  for (const header of message.payload.headers) {
+    if (!header.name || !header.value) {
+      continue;
     }
 
-    return messageDetails;
-  } catch (error: any) {
-    console.error('Gmail API error:', error);
-    
-    // 認証エラー（401、400 unauthorized_client、invalid_grant、Token expired）の場合は緊急通知を送信
-    const errorMessage = error?.message || '';
-    const errorCode = error?.code || error?.response?.status;
-    const errorData = error?.response?.data || {};
-    const errorType = errorData?.error || '';
-    
-    const isAuthError = 
-      errorCode === 401 || 
-      errorCode === 400 ||
-      errorType === 'unauthorized_client' ||
-      errorType === 'invalid_grant' ||
-      errorMessage.includes('unauthorized_client') ||
-      errorMessage.includes('invalid_grant') ||
-      errorMessage.includes('Token has been expired') ||
-      errorMessage.includes('Token has been revoked') ||
-      errorMessage.includes('expired or revoked');
-    
-    if (isAuthError) {
-      try {
-        const { notifyApiTokenExpired } = await import('../utils/emergency-notification');
-        const errorDetails = errorData?.error_description || errorMessage || 'Unauthorized';
-        await notifyApiTokenExpired('Gmail', errorDetails);
-      } catch (notifyError) {
-        console.error('Failed to send emergency notification:', notifyError);
+    const name = header.name.toLowerCase();
+    switch (name) {
+      case 'from':
+        headers.from = header.value;
+        break;
+      case 'to':
+        headers.to = header.value;
+        break;
+      case 'subject':
+        headers.subject = header.value;
+        break;
+      case 'date':
+        headers.date = header.value;
+        break;
+      case 'message-id':
+        headers.messageId = header.value;
+        break;
+    }
+  }
+
+  return headers;
+}
+
+/**
+ * メッセージ本文を再帰的に抽出（マルチパート対応）
+ * 
+ * @param part - メッセージパート
+ * @returns 抽出されたテキスト
+ */
+function extractTextFromPart(part: gmail_v1.Schema$MessagePart): string {
+  let text = '';
+
+  // このパートがテキスト本文の場合
+  if (part.body?.data) {
+    try {
+      const decoded = Buffer.from(part.body.data, 'base64').toString('utf-8');
+      text += decoded;
+    } catch (error) {
+      // デコードエラーは無視
+    }
+  }
+
+  // マルチパートの場合、再帰的に処理
+  if (part.parts && part.parts.length > 0) {
+    for (const subPart of part.parts) {
+      const mimeType = subPart.mimeType || '';
+      
+      // テキスト本文を優先
+      if (mimeType.startsWith('text/plain')) {
+        const subText = extractTextFromPart(subPart);
+        if (subText) {
+          text = subText; // プレーンテキストを優先
+        }
+      } else if (mimeType.startsWith('text/html') && !text) {
+        // HTML本文はテキストがない場合のみ使用
+        const subText = extractTextFromPart(subPart);
+        if (subText) {
+          // HTMLタグを簡易的に削除（簡易版）
+          text = subText.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+        }
+      } else if (!mimeType.startsWith('text/')) {
+        // テキスト以外のパートはスキップ
+        continue;
+      } else {
+        // その他のテキストパート
+        const subText = extractTextFromPart(subPart);
+        if (subText && !text) {
+          text = subText;
+        }
       }
     }
-    
-    throw error;
   }
+
+  return text;
+}
+
+/**
+ * メッセージ本文を抽出
+ * 
+ * @param message - Gmailメッセージオブジェクト
+ * @returns 抽出されたテキスト本文
+ */
+export function extractMessageBody(message: GmailMessage): string {
+  if (!message.payload) {
+    return '';
+  }
+
+  return extractTextFromPart(message.payload);
 }
 
 /**
  * スレッド履歴を取得
  * 
  * @param threadId - スレッドID
- * @returns スレッド内のメッセージリスト
+ * @returns スレッド内の全メッセージ
  */
 export async function getThreadHistory(threadId: string): Promise<GmailMessage[]> {
-  if (!isGmailClientAvailable()) {
-    throw new Error('Gmail API credentials not configured');
+  const client = initializeGmailClient();
+  if (!client) {
+    throw new Error('Gmail API client is not available');
   }
-
-  const client = getGmailClient();
 
   try {
     const response = await client.users.threads.get({
@@ -192,146 +357,32 @@ export async function getThreadHistory(threadId: string): Promise<GmailMessage[]
       format: 'full'
     });
 
-    const thread = response.data;
-    const messages: GmailMessage[] = [];
-
-    if (thread.messages) {
-      for (const message of thread.messages) {
-        messages.push({
-          id: message.id || '',
-          threadId: message.threadId || '',
-          labelIds: message.labelIds || [],
-          snippet: message.snippet || '',
-          historyId: message.historyId || '',
-          internalDate: message.internalDate || '',
-          payload: message.payload,
-          sizeEstimate: message.sizeEstimate ?? undefined,
-          raw: message.raw ?? undefined
-        });
-      }
+    if (!response.data.messages || response.data.messages.length === 0) {
+      return [];
     }
 
-    return messages;
+    return response.data.messages.map((msg) => ({
+      id: msg.id || '',
+      threadId: msg.threadId || '',
+      snippet: msg.snippet || '',
+      payload: msg.payload,
+      internalDate: msg.internalDate,
+      labelIds: msg.labelIds || []
+    })) as GmailMessage[];
   } catch (error: any) {
-    console.error(`Failed to get thread history for ${threadId}:`, error);
-    
-    // 認証エラー（401、400 unauthorized_client、invalid_grant、Token expired）の場合は緊急通知を送信
-    const errorMessage = error?.message || '';
-    const errorCode = error?.code || error?.response?.status;
-    const errorData = error?.response?.data || {};
-    const errorType = errorData?.error || '';
-    
-    const isAuthError = 
-      errorCode === 401 || 
-      errorCode === 400 ||
-      errorType === 'unauthorized_client' ||
-      errorType === 'invalid_grant' ||
-      errorMessage.includes('unauthorized_client') ||
-      errorMessage.includes('invalid_grant') ||
-      errorMessage.includes('Token has been expired') ||
-      errorMessage.includes('Token has been revoked') ||
-      errorMessage.includes('expired or revoked');
-    
-    if (isAuthError) {
-      try {
-        const { notifyApiTokenExpired } = await import('../utils/emergency-notification');
-        const errorDetails = errorData?.error_description || errorMessage || 'Unauthorized';
-        await notifyApiTokenExpired('Gmail', errorDetails);
-      } catch (notifyError) {
-        console.error('Failed to send emergency notification:', notifyError);
-      }
-    }
-    
-    throw error;
+    await handleGmailApiError(error, `getThreadHistory(${threadId})`);
+    throw new Error(`Gmail API error: ${error.message}`);
   }
 }
 
 /**
- * メッセージ本文を抽出
- * 
- * @param message - Gmailメッセージ
- * @returns 抽出されたテキスト本文
- */
-export function extractMessageBody(message: GmailMessage): string {
-  if (!message.payload) {
-    return message.snippet || '';
-  }
-
-  let textBody = '';
-  let htmlBody = '';
-
-  // メッセージ本文を再帰的に抽出
-  function extractPart(part: gmail_v1.Schema$MessagePart): void {
-    if (part.body?.data) {
-      const decodedData = Buffer.from(part.body.data, 'base64').toString('utf-8');
-      if (part.mimeType === 'text/plain') {
-        textBody = decodedData;
-      } else if (part.mimeType === 'text/html') {
-        htmlBody = decodedData;
-      }
-    }
-
-    // マルチパートメッセージの場合、各パートを処理
-    if (part.parts) {
-      for (const subPart of part.parts) {
-        extractPart(subPart);
-      }
-    }
-  }
-
-  extractPart(message.payload);
-
-  // テキスト本文を優先、なければHTMLからテキストを抽出（簡易版）
-  if (textBody) {
-    return textBody;
-  } else if (htmlBody) {
-    // HTMLタグを削除（簡易版）
-    return htmlBody.replace(/<[^>]*>/g, '').trim();
-  }
-
-  // 本文が取得できない場合はスニペットを返す
-  return message.snippet || '';
-}
-
-/**
- * メッセージのヘッダー情報を抽出
- * 
- * @param message - Gmailメッセージ
- * @returns ヘッダー情報
- */
-export function extractMessageHeaders(message: GmailMessage): {
-  from?: string;
-  to?: string;
-  subject?: string;
-  date?: string;
-} {
-  if (!message.payload?.headers) {
-    return {};
-  }
-
-  const headers: Record<string, string> = {};
-  for (const header of message.payload.headers) {
-    if (header.name && header.value) {
-      headers[header.name.toLowerCase()] = header.value;
-    }
-  }
-
-  return {
-    from: headers['from'],
-    to: headers['to'],
-    subject: headers['subject'],
-    date: headers['date']
-  };
-}
-
-/**
- * Gmailでメールを送信
+ * Gmailメールを送信
  * 
  * @param to - 送信先メールアドレス
  * @param subject - 件名
  * @param body - 本文
  * @param threadId - スレッドID（返信の場合）
- * @returns 送信成功時true
+ * @returns 送信成功かどうか
  */
 export async function sendGmailMessage(
   to: string,
@@ -339,74 +390,63 @@ export async function sendGmailMessage(
   body: string,
   threadId?: string
 ): Promise<boolean> {
-  if (!isGmailClientAvailable()) {
-    console.error('Gmail API credentials not configured');
-    return false;
-  }
-
-  const client = getGmailClient();
+  const client = initializeGmailClient();
   if (!client) {
-    return false;
+    throw new Error('Gmail API client is not available');
   }
 
   try {
     // メール本文を作成
-    const messageParts = [
+    const email = [
       `To: ${to}`,
       `Subject: ${subject}`,
       'Content-Type: text/plain; charset=utf-8',
       '',
       body
-    ];
+    ].join('\n');
 
-    const message = messageParts.join('\n');
-    const encodedMessage = Buffer.from(message)
+    // Base64エンコード（URL-safe）
+    const encodedEmail = Buffer.from(email)
       .toString('base64')
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
       .replace(/=+$/, '');
 
-    const requestBody: gmail_v1.Params$Resource$Users$Messages$Send = {
+    // メール送信リクエスト
+    const sendRequest: gmail_v1.Params$Resource$Users$Messages$Send = {
       userId: 'me',
       requestBody: {
-        raw: encodedMessage,
+        raw: encodedEmail,
         threadId: threadId
       }
     };
 
-    await client.users.messages.send(requestBody);
-    console.log('[Gmail送信成功]', { to, subject, threadId });
+    await client.users.messages.send(sendRequest);
     return true;
   } catch (error: any) {
-    console.error('[Gmail送信失敗]', { to, subject, error: error.message });
-    
-    // 認証エラー（401、400 unauthorized_client、invalid_grant、Token expired）の場合は緊急通知を送信
-    const errorMessage = error?.message || '';
-    const errorCode = error?.code || error?.response?.status;
-    const errorData = error?.response?.data || {};
-    const errorType = errorData?.error || '';
-    
-    const isAuthError = 
-      errorCode === 401 || 
-      errorCode === 400 ||
-      errorType === 'unauthorized_client' ||
-      errorType === 'invalid_grant' ||
-      errorMessage.includes('unauthorized_client') ||
-      errorMessage.includes('invalid_grant') ||
-      errorMessage.includes('Token has been expired') ||
-      errorMessage.includes('Token has been revoked') ||
-      errorMessage.includes('expired or revoked');
-    
-    if (isAuthError) {
-      try {
-        const { notifyApiTokenExpired } = await import('../utils/emergency-notification');
-        const errorDetails = errorData?.error_description || errorMessage || 'Unauthorized';
-        await notifyApiTokenExpired('Gmail', errorDetails);
-      } catch (notifyError) {
-        console.error('Failed to send emergency notification:', notifyError);
-      }
-    }
-    
+    await handleGmailApiError(error, 'sendGmailMessage');
+    throw new Error(`Gmail send error: ${error.message}`);
+  }
+}
+
+/**
+ * トークンの有効性を確認するための軽量なAPI呼び出し
+ * 定期的に実行することで、リフレッシュトークンの6ヶ月失効を防ぐ
+ * 
+ * @returns 成功時true、失敗時false
+ */
+export async function verifyGmailToken(): Promise<boolean> {
+  const client = initializeGmailClient();
+  if (!client) {
+    return false;
+  }
+
+  try {
+    // 軽量なAPI呼び出し（プロファイル情報の取得）
+    await client.users.getProfile({ userId: 'me' });
+    return true;
+  } catch (error: any) {
+    await handleGmailApiError(error, 'verifyGmailToken');
     return false;
   }
 }

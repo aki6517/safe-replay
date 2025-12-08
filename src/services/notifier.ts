@@ -88,7 +88,8 @@ export async function sendLineNotification(
         subject: message.subject,
         body: message.body,
         sender: message.sender,
-        source: message.source
+        source: message.source,
+        draft // 返信案も渡す
       });
       
       // デバッグ用: Flex MessageのJSONを出力（開発環境のみ）
