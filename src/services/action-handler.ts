@@ -102,6 +102,9 @@ export async function handleLineAction(
     if (action === 'send') {
       // 送信処理
       await handleSendAction(userId, message);
+    } else if (action === 'view_draft' || action === 'view_reply') {
+      // 返信文確認処理
+      await handleViewDraftAction(userId, message);
     } else if (action === 'edit') {
       // 編集処理（ドラフト再生成）
       await handleEditAction(userId, message);
@@ -191,6 +194,52 @@ async function handleSendAction(userId: string, message: any): Promise<void> {
   } catch (error: any) {
     console.error('[送信アクションエラー]', { userId, messageId: message.id, error: error.message });
     await sendTextMessage(userId, 'エラー: 送信処理中にエラーが発生しました。');
+  }
+}
+
+/**
+ * 返信文確認アクションを処理
+ */
+async function handleViewDraftAction(userId: string, message: any): Promise<void> {
+  try {
+    // 返信文を取得（draft_replyを優先、なければbody_plainから）
+    const draft = message.draft_reply || message.body_plain || message.extracted_content || '';
+    
+    if (!draft) {
+      await sendTextMessage(userId, '返信文が見つかりませんでした。\n\n返信文が生成されていない可能性があります。');
+      return;
+    }
+
+    // 件名を取得
+    const subject = message.subject || '（件名なし）';
+    const sender = message.sender_identifier || message.sender_name || '送信者不明';
+    
+    // 返信文を表示（長い場合は分割）
+    const maxLength = 5000; // LINEのメッセージ上限
+    
+    if (draft.length <= maxLength) {
+      await sendTextMessage(userId, `📝 返信文（全文）\n\n【件名】\nRe: ${subject}\n\n【送信先】\n${sender}\n\n【返信文】\n${draft}`);
+    } else {
+      // 長い場合は分割して送信
+      const chunks = [];
+      for (let i = 0; i < draft.length; i += maxLength) {
+        chunks.push(draft.substring(i, i + maxLength));
+      }
+      
+      await sendTextMessage(userId, `📝 返信文（全文）\n\n【件名】\nRe: ${subject}\n\n【送信先】\n${sender}\n\n【返信文】`);
+      for (let i = 0; i < chunks.length; i++) {
+        await sendTextMessage(userId, `${chunks[i]}${i < chunks.length - 1 ? '\n\n（続く）' : ''}`);
+        // レート制限を避けるため少し待機
+        if (i < chunks.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+    }
+    
+    console.log('[返信文確認アクション完了]', { messageId: message.id, draftLength: draft.length });
+  } catch (error: any) {
+    console.error('[返信文確認アクションエラー]', { userId, messageId: message.id, error: error.message });
+    await sendTextMessage(userId, 'エラー: 返信文の取得中にエラーが発生しました。');
   }
 }
 

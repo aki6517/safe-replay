@@ -248,15 +248,27 @@ export async function pollChatwork(
                   // LINE User IDを取得（effectiveLineUserIdを使用）
                   const lineUserIdForNotification = effectiveLineUserId;
 
-                  // Type Aの場合はドラフト生成
+                  // 全メッセージ（Type A, B）にドラフト生成（Type Cは通知しないので不要）
                   let draft: string | undefined;
-                  if (triageResult.type === 'A') {
+                  if (triageResult.type === 'A' || triageResult.type === 'B') {
                     try {
                       draft = await generateDraft(
                         '', // Chatworkには件名がない
                         messageText,
                         triageResult.type
                       );
+                      console.log('[ドラフト生成完了]', {
+                        messageId: message.message_id,
+                        triageType: triageResult.type,
+                        draftLength: draft?.length || 0
+                      });
+                      
+                      // 返信文をDBに保存
+                      if (draft) {
+                        await (supabase.from('messages') as any).update({
+                          draft_reply: draft
+                        }).eq('id', messageId);
+                      }
                     } catch (draftError: any) {
                       console.warn(`Failed to generate draft for message ${message.message_id}:`, draftError.message);
                     }

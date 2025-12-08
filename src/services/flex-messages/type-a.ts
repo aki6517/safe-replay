@@ -147,6 +147,7 @@ export function createTypeAFlexMessage(data: TypeAFlexMessageData): FlexMessage 
   );
 
   // フッターコンテンツ
+  // ボタン配置: 左上=返信文確認、右上=返信文修正、左下=返信、右下=ブロック
   const footerContents: (FlexBox | FlexButton)[] = [
     {
       type: 'box',
@@ -156,18 +157,18 @@ export function createTypeAFlexMessage(data: TypeAFlexMessageData): FlexMessage 
           type: 'button',
           action: {
             type: 'postback',
-            label: '送信',
-            data: `action=send&message_id=${messageId}`,
-            displayText: '返信を送信します'
+            label: '返信文確認',
+            data: `action=view_draft&message_id=${messageId}`,
+            displayText: '返信文を確認します'
           },
-          style: 'primary',
-          color: '#0066CC'
+          style: 'secondary',
+          color: '#2196F3'
         } as FlexButton,
         {
           type: 'button',
           action: {
             type: 'postback',
-            label: '修正',
+            label: '返信文修正',
             data: `action=edit&message_id=${messageId}`,
             displayText: '返信を修正します'
           },
@@ -185,12 +186,12 @@ export function createTypeAFlexMessage(data: TypeAFlexMessageData): FlexMessage 
           type: 'button',
           action: {
             type: 'postback',
-            label: '断る',
-            data: `action=dismiss&message_id=${messageId}`,
-            displayText: '返信を断ります'
+            label: '返信',
+            data: `action=send&message_id=${messageId}`,
+            displayText: '返信を送信します'
           },
-          style: 'secondary',
-          color: '#FF6B6B'
+          style: 'primary',
+          color: '#0066CC'
         } as FlexButton,
         {
           type: 'button',

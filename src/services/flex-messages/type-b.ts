@@ -152,40 +152,75 @@ export function createTypeBFlexMessage(data: TypeBFlexMessageData): FlexMessage 
   }
 
   // フッターコンテンツ（ボタン）
+  // 返信案がある場合: 左上=返信文確認、右上=返信文修正、左下=返信、右下=ブロック
+  // 返信案がない場合: 左上=既読、右上=確認メール、左下=空、右下=ブロック
   const footerContents: (FlexBox | FlexButton)[] = [];
   
-  // 返信案がある場合は送信ボタンを追加
   if (draftPreview) {
-    footerContents.push({
-      type: 'box',
-      layout: 'horizontal',
-      contents: [
-        {
-          type: 'button',
-          action: {
-            type: 'postback',
-            label: '返信送信',
-            data: `action=send&message_id=${messageId}`,
-            displayText: '返信を送信します'
-          },
-          style: 'primary',
-          color: '#0066CC'
-        } as FlexButton,
-        {
-          type: 'button',
-          action: {
-            type: 'postback',
-            label: '既読',
-            data: `action=read&message_id=${messageId}`,
-            displayText: '既読にしました'
-          },
-          style: 'secondary',
-          color: '#4CAF50'
-        } as FlexButton
-      ],
-      spacing: 'sm'
-    });
+    // 返信案がある場合
+    footerContents.push(
+      {
+        type: 'box',
+        layout: 'horizontal',
+        contents: [
+          {
+            type: 'button',
+            action: {
+              type: 'postback',
+              label: '返信文確認',
+              data: `action=view_draft&message_id=${messageId}`,
+              displayText: '返信文を確認します'
+            },
+            style: 'secondary',
+            color: '#2196F3'
+          } as FlexButton,
+          {
+            type: 'button',
+            action: {
+              type: 'postback',
+              label: '返信文修正',
+              data: `action=edit&message_id=${messageId}`,
+              displayText: '返信を修正します'
+            },
+            style: 'secondary',
+            color: '#888888'
+          } as FlexButton
+        ],
+        spacing: 'sm'
+      },
+      {
+        type: 'box',
+        layout: 'horizontal',
+        contents: [
+          {
+            type: 'button',
+            action: {
+              type: 'postback',
+              label: '返信',
+              data: `action=send&message_id=${messageId}`,
+              displayText: '返信を送信します'
+            },
+            style: 'primary',
+            color: '#0066CC'
+          } as FlexButton,
+          {
+            type: 'button',
+            action: {
+              type: 'postback',
+              label: '🚫ブロック',
+              data: `action=block&message_id=${messageId}`,
+              displayText: 'この送信者をブロックします'
+            },
+            style: 'secondary',
+            color: '#888888'
+          } as FlexButton
+        ],
+        spacing: 'sm',
+        margin: 'sm'
+      }
+    );
   } else {
+    // 返信案がない場合
     footerContents.push({
       type: 'box',
       layout: 'horizontal',
@@ -215,20 +250,19 @@ export function createTypeBFlexMessage(data: TypeBFlexMessageData): FlexMessage 
       ],
       spacing: 'sm'
     });
+    footerContents.push({
+      type: 'button',
+      action: {
+        type: 'postback',
+        label: '🚫ブロック',
+        data: `action=block&message_id=${messageId}`,
+        displayText: 'この送信者をブロックします'
+      },
+      style: 'secondary',
+      color: '#888888',
+      margin: 'sm'
+    });
   }
-
-  footerContents.push({
-    type: 'button',
-    action: {
-      type: 'postback',
-      label: '🚫ブロック',
-      data: `action=block&message_id=${messageId}`,
-      displayText: 'この送信者をブロックします'
-    },
-    style: 'secondary',
-    color: '#888888',
-    margin: 'sm'
-  });
 
   const bubble: FlexBubble = {
     type: 'bubble',

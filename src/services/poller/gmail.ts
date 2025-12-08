@@ -330,6 +330,13 @@ export async function pollGmail(
                         triageType: triageResult.type,
                         draftLength: draft?.length || 0
                       });
+                      
+                      // 返信文をDBに保存
+                      if (draft) {
+                        await (supabase.from('messages') as any).update({
+                          draft_reply: draft
+                        }).eq('id', messageId);
+                      }
                     } catch (draftError: any) {
                       console.warn(`Failed to generate draft for message ${message.id}:`, draftError.message);
                     }
