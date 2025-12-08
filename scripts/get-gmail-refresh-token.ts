@@ -14,7 +14,11 @@ import * as dotenv from 'dotenv';
 
 dotenv.config();
 
-const SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
+// gmail.readonly: メール読み取り、gmail.send: メール送信
+const SCOPES = [
+  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/gmail.send'
+];
 
 async function getRefreshToken() {
   const clientId = process.env.GMAIL_CLIENT_ID;
