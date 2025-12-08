@@ -139,10 +139,11 @@ export async function handleLineAction(
 async function handleSendAction(userId: string, message: any): Promise<void> {
   try {
     const sourceType = message.source_type;
-    const draft = message.body_plain || message.extracted_content || '';
+    // draft_reply（AIが作成した返信文）を優先的に使用
+    const draft = message.draft_reply;
 
     if (!draft) {
-      await sendTextMessage(userId, 'エラー: 送信する内容がありません。');
+      await sendTextMessage(userId, 'エラー: 返信文が見つかりませんでした。\n\nAIが返信文を作成していない可能性があります。新しいメッセージを受信してお試しください。');
       return;
     }
 
@@ -202,11 +203,11 @@ async function handleSendAction(userId: string, message: any): Promise<void> {
  */
 async function handleViewDraftAction(userId: string, message: any): Promise<void> {
   try {
-    // 返信文を取得（draft_replyを優先、なければbody_plainから）
-    const draft = message.draft_reply || message.body_plain || message.extracted_content || '';
+    // 返信文を取得（draft_replyのみを使用）
+    const draft = message.draft_reply;
     
     if (!draft) {
-      await sendTextMessage(userId, '返信文が見つかりませんでした。\n\n返信文が生成されていない可能性があります。');
+      await sendTextMessage(userId, '❌ 返信文が見つかりませんでした。\n\nこのメッセージはAIが返信文を作成する前に処理されたか、返信文の生成に失敗した可能性があります。\n\n新しいメッセージを受信してお試しください。');
       return;
     }
 
