@@ -8,8 +8,10 @@ import { getSupabase, isSupabaseAvailable } from '../db/client';
 
 export const oauthGmailRouter = new Hono();
 
-const GOOGLE_CLIENT_ID = process.env.GMAIL_CLIENT_ID || '';
-const GOOGLE_CLIENT_SECRET = process.env.GMAIL_CLIENT_SECRET || '';
+// LIFF用OAuth（ウェブアプリケーションクライアント）
+// 既存のデスクトップクライアントとは別に、ウェブアプリ用を使用
+const GOOGLE_CLIENT_ID = process.env.GMAIL_WEB_CLIENT_ID || process.env.GMAIL_CLIENT_ID || '';
+const GOOGLE_CLIENT_SECRET = process.env.GMAIL_WEB_CLIENT_SECRET || process.env.GMAIL_CLIENT_SECRET || '';
 const BASE_URL = process.env.BASE_URL || 'https://your-app.railway.app';
 const REDIRECT_URI = `${BASE_URL}/api/oauth/gmail/callback`;
 

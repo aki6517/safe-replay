@@ -8,7 +8,8 @@ import { html } from 'hono/html';
 export const liffRouter = new Hono();
 
 const LIFF_ID = process.env.LIFF_ID || '';
-const GOOGLE_CLIENT_ID = process.env.GMAIL_CLIENT_ID || '';
+// LIFF用OAuth（ウェブアプリケーションクライアント）
+const GOOGLE_CLIENT_ID = process.env.GMAIL_WEB_CLIENT_ID || process.env.GMAIL_CLIENT_ID || '';
 const BASE_URL = process.env.BASE_URL || 'https://your-app.railway.app';
 
 /**
