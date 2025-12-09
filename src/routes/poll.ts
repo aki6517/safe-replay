@@ -4,6 +4,7 @@
 import { Hono } from 'hono';
 import { pollGmail } from '../services/poller/gmail';
 import { pollChatwork } from '../services/poller/chatwork';
+import { pollGmailMultiUser } from '../services/poller/gmail-multi';
 
 export const pollRoutes = new Hono();
 
@@ -81,6 +82,31 @@ pollRoutes.post('/chatwork', verifyServiceKey, async (c) => {
   }
 });
 
+// マルチユーザー対応Gmailポーリング（全アクティブユーザー）
+pollRoutes.post('/gmail/all', verifyServiceKey, async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const maxResults = body.max_results || 50;
 
+    const result = await pollGmailMultiUser(maxResults);
 
-
+    return c.json({
+      status: 'ok',
+      summary: result.summary,
+      user_details: result.userDetails,
+      processing_time_ms: result.processingTimeMs
+    });
+  } catch (error: any) {
+    console.error('Multi-user Gmail polling error:', error);
+    return c.json(
+      {
+        status: 'error',
+        error: {
+          code: 'POLLING_ERROR',
+          message: error.message
+        }
+      },
+      500
+    );
+  }
+});

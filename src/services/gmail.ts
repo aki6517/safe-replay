@@ -139,6 +139,123 @@ export function isGmailClientAvailable(): boolean {
 }
 
 /**
+ * ユーザー情報の型定義（マルチユーザー対応）
+ */
+export interface GmailUserCredentials {
+  userId: string;
+  lineUserId: string;
+  gmailRefreshToken: string;
+  gmailEmail?: string;
+}
+
+/**
+ * ユーザー固有のGmail APIクライアントを作成（マルチユーザー対応）
+ * 
+ * @param credentials - ユーザーの認証情報
+ * @returns Gmail APIクライアント、または失敗時はnull
+ */
+export function createGmailClientForUser(credentials: GmailUserCredentials): gmail_v1.Gmail | null {
+  // ウェブアプリケーションクライアントを優先的に使用
+  const clientId = process.env.GMAIL_WEB_CLIENT_ID || process.env.GMAIL_CLIENT_ID;
+  const clientSecret = process.env.GMAIL_WEB_CLIENT_SECRET || process.env.GMAIL_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret || !credentials.gmailRefreshToken) {
+    console.error('[createGmailClientForUser] 認証情報が不足しています', {
+      hasClientId: !!clientId,
+      hasClientSecret: !!clientSecret,
+      hasRefreshToken: !!credentials.gmailRefreshToken,
+      userId: credentials.userId
+    });
+    return null;
+  }
+
+  try {
+    const userOAuth2Client = new google.auth.OAuth2(
+      clientId,
+      clientSecret,
+      'urn:ietf:wg:oauth:2.0:oob'
+    );
+
+    userOAuth2Client.setCredentials({
+      refresh_token: credentials.gmailRefreshToken
+    });
+
+    const userGmailClient = google.gmail({ version: 'v1', auth: userOAuth2Client });
+    
+    console.log('[createGmailClientForUser] クライアント作成成功', {
+      userId: credentials.userId,
+      gmailEmail: credentials.gmailEmail
+    });
+    
+    return userGmailClient;
+  } catch (error: any) {
+    console.error('[createGmailClientForUser] クライアント作成失敗', {
+      userId: credentials.userId,
+      error: error.message
+    });
+    return null;
+  }
+}
+
+/**
+ * ユーザー固有のGmailクライアントで未読メッセージを取得
+ */
+export async function getUnreadMessagesForUser(
+  gmailClient: gmail_v1.Gmail,
+  maxResults: number = 50,
+  daysBack: number = 3
+): Promise<GmailMessage[]> {
+  try {
+    // 過去指定日数分のクエリを構築
+    const date = new Date();
+    date.setDate(date.getDate() - daysBack);
+    const afterDate = date.toISOString().split('T')[0].replace(/-/g, '/');
+    
+    // 迷惑メール・ゴミ箱を除外し、未読のプライマリメールを取得
+    const query = `is:unread in:inbox after:${afterDate} -in:spam -in:trash`;
+
+    const listResponse = await gmailClient.users.messages.list({
+      userId: 'me',
+      maxResults,
+      q: query
+    });
+
+    const messages = listResponse.data.messages || [];
+    const fullMessages: GmailMessage[] = [];
+
+    for (const msg of messages) {
+      if (msg.id) {
+        try {
+          const fullMessage = await gmailClient.users.messages.get({
+            userId: 'me',
+            id: msg.id,
+            format: 'full'
+          });
+
+          if (fullMessage.data) {
+            fullMessages.push({
+              id: fullMessage.data.id || msg.id,
+              threadId: fullMessage.data.threadId || '',
+              snippet: fullMessage.data.snippet || '',
+              payload: fullMessage.data.payload,
+              internalDate: fullMessage.data.internalDate || undefined,
+              labelIds: fullMessage.data.labelIds || undefined
+            });
+          }
+        } catch (error: any) {
+          console.warn(`Failed to fetch message ${msg.id}:`, error.message);
+        }
+      }
+    }
+
+    return fullMessages;
+  } catch (error: any) {
+    console.error('[getUnreadMessagesForUser] エラー:', error.message);
+    throw error;
+  }
+}
+
+/**
  * メッセージの型定義
  */
 export interface GmailMessage {
