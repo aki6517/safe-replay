@@ -11,6 +11,9 @@ import { prettyJSON } from 'hono/pretty-json';
 import { lineWebhook } from './routes/line-webhook';
 import { pollRoutes } from './routes/poll';
 import { healthRoutes } from './routes/health';
+import { liffRouter } from './routes/liff';
+import { userApiRouter } from './routes/user-api';
+import { oauthGmailRouter } from './routes/oauth-gmail';
 
 const app = new Hono();
 
@@ -23,6 +26,11 @@ app.use('*', prettyJSON());
 app.route('/api/v1/line', lineWebhook);
 app.route('/api/v1/poll', pollRoutes);
 app.route('/api/v1/health', healthRoutes);
+
+// LIFF & オンボーディング用ルート
+app.route('/liff', liffRouter);
+app.route('/api/user', userApiRouter);
+app.route('/api/oauth/gmail', oauthGmailRouter);
 
 // ルートエンドポイント
 app.get('/', (c) => {
