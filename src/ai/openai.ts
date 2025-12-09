@@ -98,8 +98,8 @@ export class OpenAIProvider implements AIProvider {
 
     try {
       const response = await this.callAPI(prompt, {
-        temperature: 0.6, // 簡潔さを優先するため少し低めに
-        maxTokens: 300 // 150文字程度の出力を想定
+        temperature: 0.75, // バリエーションを出すため少し高めに
+        maxTokens: 600 // 300文字程度の出力を想定
       });
 
       return this.parseDraftResponse(response); // 同じパースロジックを使用
