@@ -8,6 +8,7 @@ import { sendTextMessage, sendFlexMessage } from './line';
 import { addToBlocklist, getBlocklist } from './blocklist';
 import { getOpenAIProvider } from '../ai/openai';
 import type { MessageContext } from '../ai/provider';
+import { startEditMode, endEditMode } from './edit-mode';
 
 /**
  * メッセージ情報を取得
@@ -114,6 +115,9 @@ export async function handleLineAction(
       // 選択されたトーンでドラフト再生成
       const tone = params.get('tone') as 'formal' | 'casual' | 'brief' | null;
       await handleEditRegenerateAction(userId, message, tone || 'formal');
+    } else if (action === 'edit_custom') {
+      // カスタム修正モード開始
+      await handleCustomEditAction(userId, message);
     } else if (action === 'dismiss') {
       // 却下処理
       await handleDismissAction(userId, message);
@@ -361,6 +365,22 @@ function createToneSelectionFlexMessage(messageId: string, subject: string): any
           height: 'sm',
           margin: 'sm',
           color: '#D4A574'
+        },
+        {
+          type: 'separator',
+          margin: 'lg'
+        },
+        {
+          type: 'button',
+          action: {
+            type: 'postback',
+            label: '🔧 カスタム修正（日付・数字など）',
+            data: `action=edit_custom&message_id=${messageId}`,
+            displayText: 'カスタム修正モードを開始'
+          },
+          style: 'secondary',
+          height: 'sm',
+          margin: 'lg'
         }
       ],
       paddingAll: 'lg',
@@ -446,6 +466,52 @@ async function handleEditRegenerateAction(
       error: error.message 
     });
     await sendTextMessage(userId, 'エラー: 返信文の再生成中にエラーが発生しました。');
+  }
+}
+
+/**
+ * カスタム修正アクションを処理（編集モード開始）
+ */
+async function handleCustomEditAction(userId: string, message: any): Promise<void> {
+  try {
+    const currentDraft = message.draft_reply;
+    
+    if (!currentDraft) {
+      await sendTextMessage(userId, '❌ 返信文が見つかりませんでした。\n\n先に返信文を生成してからカスタム修正をお試しください。');
+      return;
+    }
+
+    // 編集モードを開始
+    const success = await startEditMode(userId, message.id, currentDraft);
+    
+    if (!success) {
+      await sendTextMessage(userId, 'エラー: カスタム修正モードを開始できませんでした。');
+      return;
+    }
+
+    // ユーザーに説明と現在の返信文を表示
+    const draftPreview = currentDraft.length > 200 
+      ? currentDraft.substring(0, 200) + '...' 
+      : currentDraft;
+    
+    await sendTextMessage(userId, 
+      `🔧 **カスタム修正モード開始**\n\n` +
+      `【現在の返信文】\n${draftPreview}\n\n` +
+      `━━━━━━━━━━━━━━━━\n\n` +
+      `修正したい内容をLINEで送信してください。\n\n` +
+      `📝 **例:**\n` +
+      `・「日付を12/15に変更」\n` +
+      `・「金額を50,000円に」\n` +
+      `・「名前を田中様に」\n` +
+      `・「もっと丁寧な言い方に」\n\n` +
+      `⏰ 5分以内に入力してください。\n` +
+      `キャンセルする場合は「キャンセル」と入力。`
+    );
+
+    console.log('[カスタム修正モード開始]', { messageId: message.id, userId });
+  } catch (error: any) {
+    console.error('[カスタム修正エラー]', { userId, messageId: message.id, error: error.message });
+    await sendTextMessage(userId, 'エラー: カスタム修正モードの開始中にエラーが発生しました。');
   }
 }
 
@@ -682,6 +748,136 @@ async function handleBlocklistAction(userId: string): Promise<void> {
   }
 }
 
+/**
+ * 編集モード中のテキストメッセージを処理
+ */
+export async function handleEditModeMessage(
+  userId: string,
+  instruction: string,
+  editModeData: { messageId: string; currentDraft: string }
+): Promise<boolean> {
+  try {
+    // キャンセルチェック
+    if (instruction.trim() === 'キャンセル' || instruction.trim() === 'cancel') {
+      await endEditMode(userId);
+      await sendTextMessage(userId, '✅ カスタム修正をキャンセルしました。');
+      return true;
+    }
 
+    await sendTextMessage(userId, '⏳ 修正内容を反映中...');
 
+    // メッセージを取得
+    const message = await getMessage(editModeData.messageId);
+    if (!message) {
+      await endEditMode(userId);
+      await sendTextMessage(userId, 'エラー: メッセージが見つかりませんでした。');
+      return true;
+    }
 
+    // AIに修正指示を渡して返信文を更新
+    const aiProvider = getOpenAIProvider();
+    const modifiedDraft = await applyCustomEdit(
+      aiProvider,
+      editModeData.currentDraft,
+      instruction
+    );
+
+    if (!modifiedDraft) {
+      await sendTextMessage(userId, '❌ 修正の適用に失敗しました。もう一度お試しください。');
+      return true;
+    }
+
+    // DBのdraft_replyを更新
+    const supabase = getSupabase();
+    if (supabase && isSupabaseAvailable()) {
+      await (supabase.from('messages') as any)
+        .update({ draft_reply: modifiedDraft })
+        .eq('id', editModeData.messageId);
+    }
+
+    // 編集モードを終了
+    await endEditMode(userId);
+
+    // 修正後の返信文を表示
+    const subject = message.subject || '（件名なし）';
+    const sender = message.sender_identifier || message.sender_name || '送信者不明';
+    
+    await sendTextMessage(userId, 
+      `✅ 修正を適用しました！\n\n` +
+      `【件名】\nRe: ${subject}\n\n` +
+      `【送信先】\n${sender}\n\n` +
+      `【修正後の返信文】\n${modifiedDraft}`
+    );
+
+    // 送信ボタン付きのFlexメッセージを送信
+    const confirmFlexContents = createRegenerateConfirmFlexMessage(editModeData.messageId);
+    await sendFlexMessage(userId, {
+      type: 'flex',
+      altText: '返信文の操作',
+      contents: confirmFlexContents
+    });
+
+    console.log('[カスタム修正完了]', { 
+      messageId: editModeData.messageId, 
+      instruction,
+      draftLength: modifiedDraft.length 
+    });
+
+    return true;
+  } catch (error: any) {
+    console.error('[編集モード処理エラー]', { userId, error: error.message });
+    await endEditMode(userId);
+    await sendTextMessage(userId, 'エラー: 修正処理中にエラーが発生しました。');
+    return true;
+  }
+}
+
+/**
+ * AIに修正指示を適用してドラフトを更新
+ */
+async function applyCustomEdit(
+  aiProvider: any,
+  currentDraft: string,
+  instruction: string
+): Promise<string | null> {
+  try {
+    // カスタム編集用のプロンプトを作成
+    const prompt = `以下の返信文に対して、ユーザーの指示に従って修正してください。
+
+【現在の返信文】
+${currentDraft}
+
+【修正指示】
+${instruction}
+
+【ルール】
+1. 指示された部分のみを修正し、それ以外は元の文章を維持する
+2. 文体や敬語のレベルは元の文章に合わせる
+3. 修正後の返信文のみを出力する（説明は不要）
+
+【修正後の返信文】`;
+
+    // OpenAI APIを直接呼び出す
+    const response = await aiProvider.client.chat.completions.create({
+      model: aiProvider.config.model,
+      messages: [
+        {
+          role: 'system',
+          content: 'あなたはビジネスメールの修正アシスタントです。ユーザーの指示に従って返信文を修正します。'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.3,
+      max_tokens: 2000
+    });
+
+    const content = response.choices[0]?.message?.content;
+    return content?.trim() || null;
+  } catch (error: any) {
+    console.error('[カスタム編集エラー]', error.message);
+    return null;
+  }
+}

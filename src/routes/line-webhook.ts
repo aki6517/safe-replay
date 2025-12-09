@@ -5,8 +5,9 @@ import { Hono } from 'hono';
 import crypto from 'crypto';
 import { isLineClientAvailable, replyTextMessage } from '../services/line';
 import { processForwardedMessage } from '../services/message-processor';
-import { handleLineAction } from '../services/action-handler';
+import { handleLineAction, handleEditModeMessage } from '../services/action-handler';
 import { isUserAllowedSync } from '../utils/security';
+import { getEditMode } from '../services/edit-mode';
 import type {
   LineWebhookRequest,
   LineWebhookEvent,
@@ -88,9 +89,17 @@ lineWebhook.post('/webhook', async (c) => {
         const messageType = messageEvent.message?.type;
 
         if (messageType === 'text' && messageEvent.message.text) {
-          // 転送メッセージ処理
           const text = messageEvent.message.text;
-          await processForwardedMessage(userId, text);
+          
+          // 編集モード中かチェック
+          const editModeData = await getEditMode(userId);
+          if (editModeData) {
+            // 編集モード中：修正指示として処理
+            await handleEditModeMessage(userId, text, editModeData);
+          } else {
+            // 通常モード：転送メッセージ処理
+            await processForwardedMessage(userId, text);
+          }
         } else if (messageType === 'file') {
           // ファイル受信処理（将来実装）
           console.log('File message received:', messageEvent.message);
