@@ -1,0 +1,24 @@
+name: Health Check
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'  # 15分毎
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Health
+        id: health
+        run: |
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ secrets.API_BASE_URL }}/api/v1/health/deep")
+          echo "status=$RESPONSE" >> $GITHUB_OUTPUT
+      
+      - name: Alert on Failure
+        if: steps.health.outputs.status != '200'
+        run: |
+          curl -X POST "${{ secrets.API_BASE_URL }}/api/v1/alert" \
+            -H "Authorization: Bearer ${{ secrets.SERVICE_KEY }}" \
+            -d '{"type": "system_down"}'
+
