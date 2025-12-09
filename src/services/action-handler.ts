@@ -775,9 +775,7 @@ export async function handleEditModeMessage(
     }
 
     // AIに修正指示を渡して返信文を更新
-    const aiProvider = getOpenAIProvider();
     const modifiedDraft = await applyCustomEdit(
-      aiProvider,
       editModeData.currentDraft,
       instruction
     );
@@ -836,11 +834,22 @@ export async function handleEditModeMessage(
  * AIに修正指示を適用してドラフトを更新
  */
 async function applyCustomEdit(
-  aiProvider: any,
   currentDraft: string,
   instruction: string
 ): Promise<string | null> {
   try {
+    // OpenAI clientを直接作成
+    const OpenAI = (await import('openai')).default;
+    const apiKey = process.env.OPENAI_API_KEY;
+    
+    if (!apiKey) {
+      console.error('[カスタム編集エラー] OPENAI_API_KEYが設定されていません');
+      return null;
+    }
+    
+    const client = new OpenAI({ apiKey });
+    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+
     // カスタム編集用のプロンプトを作成
     const prompt = `以下の返信文に対して、ユーザーの指示に従って修正してください。
 
@@ -857,9 +866,9 @@ ${instruction}
 
 【修正後の返信文】`;
 
-    // OpenAI APIを直接呼び出す
-    const response = await aiProvider.client.chat.completions.create({
-      model: aiProvider.config.model,
+    // OpenAI APIを呼び出す
+    const response = await client.chat.completions.create({
+      model,
       messages: [
         {
           role: 'system',
