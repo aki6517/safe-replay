@@ -4,8 +4,10 @@
 import { getSupabase, isSupabaseAvailable } from '../db/client';
 import { sendGmailMessage } from './gmail';
 import { sendChatworkMessage } from './chatwork';
-import { sendTextMessage } from './line';
+import { sendTextMessage, sendFlexMessage } from './line';
 import { addToBlocklist, getBlocklist } from './blocklist';
+import { getOpenAIProvider } from '../ai/openai';
+import type { MessageContext } from '../ai/provider';
 
 /**
  * メッセージ情報を取得
@@ -106,8 +108,12 @@ export async function handleLineAction(
       // 返信文確認処理
       await handleViewDraftAction(userId, message);
     } else if (action === 'edit') {
-      // 編集処理（ドラフト再生成）
+      // 編集トーン選択画面を表示
       await handleEditAction(userId, message);
+    } else if (action === 'edit_regenerate') {
+      // 選択されたトーンでドラフト再生成
+      const tone = params.get('tone') as 'formal' | 'casual' | 'brief' | null;
+      await handleEditRegenerateAction(userId, message, tone || 'formal');
     } else if (action === 'dismiss') {
       // 却下処理
       await handleDismissAction(userId, message);
@@ -245,21 +251,258 @@ async function handleViewDraftAction(userId: string, message: any): Promise<void
 }
 
 /**
- * 編集アクションを処理（ドラフト再生成）
+ * 編集アクションを処理（トーン選択画面を表示）
  */
 async function handleEditAction(userId: string, message: any): Promise<void> {
   try {
-    await sendTextMessage(userId, '編集機能は現在開発中です。\n\n返信案を修正したい場合は、新しいメッセージを転送してください。');
+    const messageId = message.id;
+    const subject = message.subject || '（件名なし）';
     
-    // TODO: 将来的にドラフト再生成機能を実装
-    // const newDraft = await generateDraft(...);
-    // await sendTextMessage(userId, `新しい返信案:\n\n${newDraft}`);
+    // トーン選択用のFlexメッセージを送信
+    const flexContents = createToneSelectionFlexMessage(messageId, subject);
+    await sendFlexMessage(userId, {
+      type: 'flex',
+      altText: '返信文のトーンを選択',
+      contents: flexContents
+    });
     
     console.log('[編集アクション完了]', { messageId: message.id });
   } catch (error: any) {
     console.error('[編集アクションエラー]', { userId, messageId: message.id, error: error.message });
     await sendTextMessage(userId, 'エラー: 編集処理中にエラーが発生しました。');
   }
+}
+
+/**
+ * トーン選択用のFlexメッセージを作成
+ */
+function createToneSelectionFlexMessage(messageId: string, subject: string): any {
+  return {
+    type: 'bubble',
+    size: 'kilo',
+    header: {
+      type: 'box',
+      layout: 'vertical',
+      contents: [
+        {
+          type: 'text',
+          text: '✏️ 返信文を再生成',
+          weight: 'bold',
+          size: 'md',
+          color: '#1a1a1a'
+        }
+      ],
+      paddingAll: 'lg',
+      backgroundColor: '#f5f5f5'
+    },
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      contents: [
+        {
+          type: 'text',
+          text: subject.length > 30 ? subject.substring(0, 30) + '...' : subject,
+          size: 'sm',
+          color: '#666666',
+          wrap: true
+        },
+        {
+          type: 'separator',
+          margin: 'lg'
+        },
+        {
+          type: 'text',
+          text: 'どのトーンで再生成しますか？',
+          size: 'sm',
+          color: '#1a1a1a',
+          margin: 'lg'
+        }
+      ],
+      paddingAll: 'lg'
+    },
+    footer: {
+      type: 'box',
+      layout: 'vertical',
+      contents: [
+        {
+          type: 'button',
+          action: {
+            type: 'postback',
+            label: '📝 フォーマル（丁寧）',
+            data: `action=edit_regenerate&message_id=${messageId}&tone=formal`,
+            displayText: 'フォーマルなトーンで再生成'
+          },
+          style: 'primary',
+          height: 'sm',
+          color: '#4A90A4'
+        },
+        {
+          type: 'button',
+          action: {
+            type: 'postback',
+            label: '💬 カジュアル（親しみ）',
+            data: `action=edit_regenerate&message_id=${messageId}&tone=casual`,
+            displayText: 'カジュアルなトーンで再生成'
+          },
+          style: 'primary',
+          height: 'sm',
+          margin: 'sm',
+          color: '#5BA88B'
+        },
+        {
+          type: 'button',
+          action: {
+            type: 'postback',
+            label: '⚡ 簡潔（短め）',
+            data: `action=edit_regenerate&message_id=${messageId}&tone=brief`,
+            displayText: '簡潔なトーンで再生成'
+          },
+          style: 'primary',
+          height: 'sm',
+          margin: 'sm',
+          color: '#D4A574'
+        }
+      ],
+      paddingAll: 'lg',
+      spacing: 'none'
+    }
+  };
+}
+
+/**
+ * ドラフト再生成アクションを処理
+ */
+async function handleEditRegenerateAction(
+  userId: string, 
+  message: any, 
+  tone: 'formal' | 'casual' | 'brief'
+): Promise<void> {
+  try {
+    // 処理中メッセージを送信
+    const toneLabels: Record<string, string> = {
+      formal: 'フォーマル',
+      casual: 'カジュアル', 
+      brief: '簡潔'
+    };
+    await sendTextMessage(userId, `⏳ ${toneLabels[tone]}トーンで返信文を再生成中...`);
+
+    // メッセージコンテキストを作成
+    const context: MessageContext = {
+      subject: message.subject || '',
+      body: message.body_plain || message.body || '',
+      senderName: message.sender_identifier || message.sender_name || '',
+      sourceType: message.source_type || 'gmail'
+    };
+
+    // トリアージタイプを取得
+    const triageType = message.triage_type || 'B';
+
+    // AIプロバイダーでドラフト再生成
+    const aiProvider = getOpenAIProvider();
+    const newDraft = await aiProvider.generateDraft(context, triageType, tone);
+
+    if (!newDraft) {
+      await sendTextMessage(userId, '❌ 返信文の再生成に失敗しました。もう一度お試しください。');
+      return;
+    }
+
+    // DBのdraft_replyを更新
+    const supabase = getSupabase();
+    if (supabase && isSupabaseAvailable()) {
+      await (supabase.from('messages') as any)
+        .update({ draft_reply: newDraft })
+        .eq('id', message.id);
+    }
+
+    // 再生成した返信文を表示
+    const subject = message.subject || '（件名なし）';
+    const sender = message.sender_identifier || message.sender_name || '送信者不明';
+    
+    await sendTextMessage(userId, 
+      `✅ ${toneLabels[tone]}トーンで再生成しました！\n\n` +
+      `【件名】\nRe: ${subject}\n\n` +
+      `【送信先】\n${sender}\n\n` +
+      `【新しい返信文】\n${newDraft}`
+    );
+
+    // 送信ボタン付きのFlexメッセージを送信
+    const confirmFlexContents = createRegenerateConfirmFlexMessage(message.id);
+    await sendFlexMessage(userId, {
+      type: 'flex',
+      altText: '返信文の操作',
+      contents: confirmFlexContents
+    });
+
+    console.log('[ドラフト再生成完了]', { 
+      messageId: message.id, 
+      tone,
+      draftLength: newDraft.length 
+    });
+  } catch (error: any) {
+    console.error('[ドラフト再生成エラー]', { 
+      userId, 
+      messageId: message.id, 
+      tone,
+      error: error.message 
+    });
+    await sendTextMessage(userId, 'エラー: 返信文の再生成中にエラーが発生しました。');
+  }
+}
+
+/**
+ * 再生成後の確認用Flexメッセージを作成
+ */
+function createRegenerateConfirmFlexMessage(messageId: string): any {
+  return {
+    type: 'bubble',
+    size: 'kilo',
+    body: {
+      type: 'box',
+      layout: 'vertical',
+      contents: [
+        {
+          type: 'text',
+          text: 'この返信文でよろしいですか？',
+          size: 'sm',
+          color: '#666666'
+        }
+      ],
+      paddingAll: 'lg'
+    },
+    footer: {
+      type: 'box',
+      layout: 'horizontal',
+      contents: [
+        {
+          type: 'button',
+          action: {
+            type: 'postback',
+            label: '✉️ 送信',
+            data: `action=send&message_id=${messageId}`,
+            displayText: 'この返信文を送信'
+          },
+          style: 'primary',
+          height: 'sm',
+          color: '#4A90A4',
+          flex: 1
+        },
+        {
+          type: 'button',
+          action: {
+            type: 'postback',
+            label: '✏️ 再修正',
+            data: `action=edit&message_id=${messageId}`,
+            displayText: '別のトーンで再生成'
+          },
+          style: 'secondary',
+          height: 'sm',
+          flex: 1,
+          margin: 'sm'
+        }
+      ],
+      paddingAll: 'lg'
+    }
+  };
 }
 
 /**
