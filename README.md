@@ -31,13 +31,27 @@ cp .env.example .env
 
 Supabaseのダッシュボードから、`supabase/migrations/001_initial_schema.sql`を実行してください。
 
-### 4. 開発サーバーの起動
+### 4. Node.js バージョン
 
 ```bash
-npm run dev
+nvm use
 ```
 
-### 5. 本番ビルド
+`.nvmrc`でNode 20系を指定しています。
+
+### 5. 開発サーバーの起動（ポート3001）
+
+```bash
+PORT=3001 npm run dev
+```
+
+### 6. ヘルスチェック
+
+```bash
+curl http://localhost:3001/api/v1/health
+```
+
+### 7. 本番ビルド
 
 ```bash
 npm run build
