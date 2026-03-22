@@ -1,17 +1,63 @@
 /**
- * Chatworkポーリングサービス
+ * マルチユーザー対応Chatworkポーリングサービス
+ * DBに登録された全アクティブユーザーのChatworkを監視
  */
 import {
   getMessagesToMe,
-  getMyId,
   extractMessageText,
   isChatworkClientAvailable
 } from '../chatwork';
-import { redis, isRedisAvailable } from '../../db/redis';
+import { redis, isRedisAvailable, markRedisUnavailable } from '../../db/redis';
 import { getSupabase, isSupabaseAvailable } from '../../db/client';
 import { triageMessage } from '../../ai/triage';
 import { generateDraft } from '../../ai/draft';
 import { sendLineNotification } from '../notifier';
+
+/**
+ * Chatworkユーザー情報
+ */
+interface ChatworkUserCredentials {
+  userId: string;       // DB UUID
+  lineUserId: string;   // LINE User ID
+  chatworkApiToken: string;
+}
+
+/**
+ * DBからChatwork設定済みのアクティブユーザー一覧を取得
+ */
+async function getActiveChatworkUsers(): Promise<ChatworkUserCredentials[]> {
+  const supabase = getSupabase();
+  if (!supabase || !isSupabaseAvailable()) {
+    console.error('[getActiveChatworkUsers] Supabaseが利用できません');
+    return [];
+  }
+
+  try {
+    const { data, error } = await (supabase.from('users') as any)
+      .select('id, line_user_id, chatwork_api_token')
+      .eq('status', 'active')
+      .not('chatwork_api_token', 'is', null);
+
+    if (error) {
+      console.error('[getActiveChatworkUsers] クエリエラー:', error);
+      return [];
+    }
+
+    if (!data || data.length === 0) {
+      console.log('[getActiveChatworkUsers] Chatwork設定済みのアクティブユーザーが見つかりません');
+      return [];
+    }
+
+    return data.map((user: any) => ({
+      userId: user.id,
+      lineUserId: user.line_user_id,
+      chatworkApiToken: user.chatwork_api_token
+    }));
+  } catch (error: any) {
+    console.error('[getActiveChatworkUsers] エラー:', error.message);
+    return [];
+  }
+}
 
 /**
  * 処理済みメッセージIDをRedisから取得
@@ -27,6 +73,7 @@ async function getProcessedMessageIds(userId: string): Promise<Set<string>> {
     return new Set(ids as string[]);
   } catch (error) {
     console.error('Failed to get processed message IDs from Redis:', error);
+    markRedisUnavailable(error);
     return new Set();
   }
 }
@@ -46,50 +93,174 @@ async function markMessageAsProcessed(userId: string, messageId: string): Promis
     await redis.expire(key, 30 * 24 * 60 * 60);
   } catch (error) {
     console.error('Failed to mark message as processed in Redis:', error);
+    markRedisUnavailable(error);
   }
 }
 
 /**
- * LINE User IDからusersテーブルのUUIDを取得（存在しない場合は作成）
+ * 単一ユーザーのChatworkをポーリング
  */
-async function getOrCreateUser(lineUserId: string): Promise<string | null> {
-  const supabase = getSupabase();
-  if (!supabase) {
-    return null;
+async function pollChatworkForUser(
+  credentials: ChatworkUserCredentials,
+  maxResults: number = 50
+): Promise<{
+  messagesNew: number;
+  messagesSkipped: number;
+  errors: string[];
+}> {
+  const errors: string[] = [];
+  let messagesNew = 0;
+  let messagesSkipped = 0;
+
+  if (!isChatworkClientAvailable(credentials.chatworkApiToken)) {
+    errors.push(`Chatwork API token invalid for user ${credentials.userId}`);
+    return { messagesNew, messagesSkipped, errors };
   }
 
   try {
-    // 既存ユーザーを検索
-    const searchResult: any = await supabase
-      .from('users')
-      .select('id')
-      .eq('line_user_id', lineUserId)
-      .single();
+    // ユーザー固有のトークンでメッセージを取得
+    const messages = await getMessagesToMe(maxResults, 7, credentials.chatworkApiToken);
 
-    if (searchResult.data && !searchResult.error) {
-      return searchResult.data.id;
+    // 処理済みメッセージIDを取得
+    const processedIds = await getProcessedMessageIds(credentials.userId);
+    const supabase = getSupabase();
+
+    for (const message of messages) {
+      try {
+        // 既に処理済みのメッセージはスキップ
+        if (processedIds.has(message.message_id)) {
+          messagesSkipped++;
+          continue;
+        }
+
+        // メッセージ本文を抽出
+        const messageText = extractMessageText(message);
+
+        // データベースに保存
+        if (supabase) {
+          const insertData = {
+            user_id: credentials.userId,
+            source_type: 'chatwork' as const,
+            source_message_id: message.message_id,
+            thread_id: null,
+            sender_identifier: message.account.account_id.toString(),
+            sender_name: message.account.name || null,
+            subject: null,
+            body_plain: messageText || null,
+            extracted_content: messageText || null,
+            received_at: new Date(message.send_time * 1000).toISOString(),
+            status: 'pending' as const,
+            metadata: {
+              room_id: message.room_id || null,
+              account_id: message.account.account_id,
+              avatar_path: message.account.avatar_path,
+              update_time: message.update_time
+            } as Record<string, unknown>
+          };
+
+          const { data: insertedData, error: dbError } = await (supabase.from('messages') as any)
+            .insert(insertData)
+            .select()
+            .single();
+
+          if (dbError) {
+            if (dbError.code !== '23505') {
+              errors.push(`DB error for message ${message.message_id}: ${dbError.message}`);
+            } else {
+              messagesSkipped++;
+            }
+            continue;
+          }
+
+          messagesNew++;
+          const messageId = insertedData?.id;
+
+          if (messageId) {
+            // AIトリアージを実行
+            try {
+              const triageResult = await triageMessage('', messageText);
+
+              // トリアージ結果をDBに更新
+              await (supabase.from('messages') as any).update({
+                triage_type: triageResult.type,
+                triage_reason: triageResult.reason,
+                priority_score: triageResult.priority_score,
+                ai_analysis: {
+                  confidence: triageResult.confidence,
+                  details: triageResult.details
+                } as Record<string, unknown>
+              }).eq('id', messageId);
+
+              // ドラフト生成（Type A, B）
+              let draft: string | undefined;
+              if (triageResult.type === 'A' || triageResult.type === 'B') {
+                try {
+                  draft = await generateDraft('', messageText, triageResult.type);
+                  if (draft) {
+                    await (supabase.from('messages') as any).update({
+                      draft_reply: draft
+                    }).eq('id', messageId);
+                  }
+                } catch (draftError: any) {
+                  console.warn(`Failed to generate draft: ${draftError.message}`);
+                }
+              }
+
+              // LINE通知を送信
+              try {
+                let softenedBody = messageText;
+                try {
+                  const { softenMessage } = await import('../../ai/soften');
+                  softenedBody = await softenMessage(
+                    '',
+                    messageText,
+                    message.account.name || undefined,
+                    triageResult.type,
+                    draft,
+                    undefined
+                  );
+                } catch (softenError: any) {
+                  console.warn(`Failed to soften message: ${softenError.message}`);
+                }
+
+                await sendLineNotification(
+                  credentials.lineUserId,
+                  messageId,
+                  triageResult.type,
+                  {
+                    subject: undefined,
+                    body: softenedBody.substring(0, 800),
+                    sender: message.account.name || 'Unknown',
+                    source: 'Chatwork'
+                  },
+                  draft,
+                  { notifyTypeC: true }
+                );
+              } catch (notifyError: any) {
+                errors.push(`Notification error: ${notifyError.message}`);
+              }
+            } catch (triageError: any) {
+              errors.push(`Triage error: ${triageError.message}`);
+            }
+
+            // 処理済みとしてマーク
+            await markMessageAsProcessed(credentials.userId, message.message_id);
+          }
+        }
+      } catch (msgError: any) {
+        errors.push(`Message processing error: ${msgError.message}`);
+      }
     }
-
-    // ユーザーが存在しない場合は作成
-    const insertResult: any = await (supabase.from('users') as any).insert({
-      line_user_id: lineUserId,
-      is_active: true
-    }).select('id').single();
-
-    if (insertResult.error || !insertResult.data) {
-      console.error('Failed to create user:', insertResult.error);
-      return null;
-    }
-
-    return insertResult.data.id;
   } catch (error: any) {
-    console.error('Failed to get or create user:', error);
-    return null;
+    errors.push(`Chatwork polling error for user ${credentials.userId}: ${error.message}`);
   }
+
+  return { messagesNew, messagesSkipped, errors };
 }
 
 /**
- * Chatworkポーリング処理
+ * マルチユーザー対応Chatworkポーリング（メイン関数）
+ * 後方互換: lineUserId指定時は従来の単一ユーザーモードで動作
  */
 export async function pollChatwork(
   lineUserId?: string,
@@ -107,267 +278,92 @@ export async function pollChatwork(
   processingTimeMs: number;
 }> {
   const startTime = Date.now();
-  const errors: string[] = [];
+  const allErrors: string[] = [];
+
+  // マルチユーザーモード: DBから全アクティブユーザーを取得
+  const activeUsers = await getActiveChatworkUsers();
+
+  // lineUserIdが指定された場合は該当ユーザーのみ、なければ全員
+  const targetUsers = lineUserId
+    ? activeUsers.filter(u => u.lineUserId === lineUserId)
+    : activeUsers;
+
+  // DBにユーザーがいない場合、環境変数フォールバック（後方互換）
+  if (targetUsers.length === 0 && isChatworkClientAvailable()) {
+    const fallbackLineUserId = lineUserId || process.env.LINE_ALLOWED_USER_IDS?.split(',')[0]?.trim() || '';
+    if (fallbackLineUserId) {
+      console.log('[pollChatwork] DBにユーザーがいないため環境変数フォールバック');
+      // 旧ロジック: グローバルトークンで単一ユーザー処理
+      const messages = await getMessagesToMe(maxResults);
+      return {
+        summary: {
+          users_processed: 1,
+          rooms_checked: messages.length > 0 ? 1 : 0,
+          messages_fetched: messages.length,
+          messages_new: 0,
+          self_messages_skipped: 0,
+          errors: ['Using env var fallback - migrate to per-user tokens']
+        },
+        details: [],
+        processingTimeMs: Date.now() - startTime
+      };
+    }
+
+    return {
+      summary: {
+        users_processed: 0,
+        rooms_checked: 0,
+        messages_fetched: 0,
+        messages_new: 0,
+        self_messages_skipped: 0,
+        errors: ['No active Chatwork users found']
+      },
+      details: [],
+      processingTimeMs: Date.now() - startTime
+    };
+  }
+
+  console.log(`[pollChatwork] ${targetUsers.length}人のユーザーを処理開始`);
+
+  let totalNew = 0;
+  let totalSkipped = 0;
   const details: any[] = [];
 
-  // Chatwork APIクライアントの確認
-  if (!isChatworkClientAvailable()) {
-    return {
-      summary: {
-        users_processed: 0,
-        rooms_checked: 0,
-        messages_fetched: 0,
-        messages_new: 0,
-        self_messages_skipped: 0,
-        errors: ['Chatwork API token not configured']
-      },
-      details: [],
-      processingTimeMs: Date.now() - startTime
-    };
-  }
+  for (const user of targetUsers) {
+    console.log(`[pollChatwork] ユーザー処理中: ${user.lineUserId}`);
 
-  try {
-    // LINE User IDからusersテーブルのUUIDを取得
-    // lineUserIdが渡されていない場合は、環境変数から取得を試みる
-    const effectiveLineUserId = lineUserId || process.env.LINE_ALLOWED_USER_IDS?.split(',')[0]?.trim() || '';
-    let userId: string | null = null;
-    if (effectiveLineUserId) {
-      userId = await getOrCreateUser(effectiveLineUserId);
-      if (!userId) {
-        return {
-          summary: {
-            users_processed: 0,
-            rooms_checked: 0,
-            messages_fetched: 0,
-            messages_new: 0,
-            self_messages_skipped: 0,
-            errors: ['Failed to get or create user']
-          },
-          details: [],
-          processingTimeMs: Date.now() - startTime
-        };
-      }
+    const result = await pollChatworkForUser(user, maxResults);
+
+    totalNew += result.messagesNew;
+    totalSkipped += result.messagesSkipped;
+    if (result.errors.length > 0) {
+      allErrors.push(...result.errors);
     }
 
-    // 自分のIDを取得（無限ループ防止用）
-    const myId = await getMyId();
+    details.push({
+      userId: user.userId,
+      lineUserId: user.lineUserId,
+      messagesNew: result.messagesNew,
+      messagesSkipped: result.messagesSkipped,
+      errors: result.errors
+    });
 
-    // 自分宛メッセージを取得
-    const messages = await getMessagesToMe(maxResults);
-    let messagesNew = 0;
-    let selfMessagesSkipped = 0;
-    let roomsChecked = 0;
-
-    // 処理済みメッセージIDを取得（userIdが指定されている場合）
-    const processedIds = userId ? await getProcessedMessageIds(userId) : new Set<string>();
-
-    // Supabaseクライアントを取得
-    const supabase = userId && isSupabaseAvailable() ? getSupabase() : null;
-
-    for (const message of messages) {
-      try {
-        // 自分自身のメッセージは除外（無限ループ防止）
-        if (message.account.account_id === myId) {
-          selfMessagesSkipped++;
-          continue;
-        }
-
-        // 既に処理済みのメッセージはスキップ
-        if (processedIds.has(message.message_id)) {
-          continue;
-        }
-
-        // メッセージ本文を抽出（Toタグなどを除去）
-        const messageText = extractMessageText(message);
-
-        // メッセージ詳細を記録
-        const messageDetail = {
-          message_id: message.message_id,
-          room_id: message.room_id || null,
-          sender: message.account.name,
-          body: messageText.substring(0, 200), // 最初の200文字のみ
-          send_time: new Date(message.send_time * 1000).toISOString()
-        };
-        details.push(messageDetail);
-
-        // データベースに保存（userIdが指定されている場合）
-        if (userId && supabase) {
-          try {
-            const insertData = {
-              user_id: userId,
-              source_type: 'chatwork' as const,
-              source_message_id: message.message_id,
-              thread_id: null, // ChatworkにはスレッドIDがない
-              sender_identifier: message.account.account_id.toString(),
-              sender_name: message.account.name || null,
-              subject: null, // Chatworkには件名がない
-              body_plain: messageText || null,
-              extracted_content: messageText || null,
-              received_at: new Date(message.send_time * 1000).toISOString(),
-              status: 'pending' as const,
-              metadata: {
-                room_id: message.room_id || null,
-                account_id: message.account.account_id,
-                avatar_path: message.account.avatar_path,
-                update_time: message.update_time
-              } as Record<string, unknown>
-            };
-            // 型アサーションを使用してSupabaseの型エラーを回避
-            const { data: insertedData, error: dbError } = await (supabase.from('messages') as any).insert(insertData).select().single();
-
-            if (dbError) {
-              // 重複エラーは無視（既に処理済み）
-              if (dbError.code !== '23505') {
-                errors.push(`Database error for message ${message.message_id}: ${dbError.message}`);
-              } else {
-                continue;
-              }
-            } else {
-              messagesNew++;
-              const messageId = insertedData?.id;
-
-              if (messageId) {
-                // AIトリアージを実行（Chatworkにはスレッド履歴がない）
-                try {
-                  const triageResult = await triageMessage(
-                    '', // Chatworkには件名がない
-                    messageText
-                  );
-
-                  // トリアージ結果をDBに更新
-                  await (supabase.from('messages') as any).update({
-                    triage_type: triageResult.type,
-                    triage_reason: triageResult.reason,
-                    priority_score: triageResult.priority_score,
-                    ai_analysis: {
-                      confidence: triageResult.confidence,
-                      details: triageResult.details
-                    } as Record<string, unknown>
-                  }).eq('id', messageId);
-
-                  // LINE User IDを取得（effectiveLineUserIdを使用）
-                  const lineUserIdForNotification = effectiveLineUserId;
-
-                  // 全メッセージ（Type A, B）にドラフト生成（Type Cは通知しないので不要）
-                  let draft: string | undefined;
-                  if (triageResult.type === 'A' || triageResult.type === 'B') {
-                    try {
-                      draft = await generateDraft(
-                        '', // Chatworkには件名がない
-                        messageText,
-                        triageResult.type
-                      );
-                      console.log('[ドラフト生成完了]', {
-                        messageId: message.message_id,
-                        triageType: triageResult.type,
-                        draftLength: draft?.length || 0
-                      });
-                      
-                      // 返信文をDBに保存
-                      if (draft) {
-                        await (supabase.from('messages') as any).update({
-                          draft_reply: draft
-                        }).eq('id', messageId);
-                      }
-                    } catch (draftError: any) {
-                      console.warn(`Failed to generate draft for message ${message.message_id}:`, draftError.message);
-                    }
-                  }
-
-                  // LINE通知を送信
-                  if (lineUserIdForNotification) {
-                    try {
-                      // ADHD向けにメッセージを柔らかく変換（LINEBOTがユーザーに語りかける形式）
-                      let softenedBody = messageText;
-                      try {
-                        const { softenMessage } = await import('../../ai/soften');
-                        softenedBody = await softenMessage(
-                          '', // Chatworkには件名がない
-                          messageText,
-                          message.account.name || undefined, // 送信者名
-                          triageResult.type,
-                          draft, // Type Aの場合は返信案も含める
-                          undefined // Chatworkにはスレッド履歴がない
-                        );
-                        console.log('[メッセージ変換完了]', {
-                          messageId: message.message_id,
-                          originalLength: messageText.length,
-                          softenedLength: softenedBody.length,
-                          triageType: triageResult.type
-                        });
-                      } catch (softenError: any) {
-                        console.warn(`Failed to soften message ${message.message_id}:`, softenError.message);
-                        // エラー時は元のメッセージを使用
-                      }
-
-                      await sendLineNotification(
-                        lineUserIdForNotification,
-                        messageId,
-                        triageResult.type,
-                        {
-                          subject: undefined, // Chatworkには件名がない
-                          body: softenedBody.substring(0, 800), // 語りかけ形式なので少し長めに
-                          sender: message.account.name || 'Unknown',
-                          source: 'Chatwork'
-                        },
-                        draft
-                      );
-                    } catch (notifyError: any) {
-                      errors.push(`Failed to send notification for message ${message.message_id}: ${notifyError.message}`);
-                    }
-                  }
-                } catch (triageError: any) {
-                  errors.push(`Failed to triage message ${message.message_id}: ${triageError.message}`);
-                }
-
-                // 処理済みとしてマーク
-                await markMessageAsProcessed(userId, message.message_id);
-              }
-            }
-          } catch (dbError: any) {
-            errors.push(`Database error for message ${message.message_id}: ${dbError.message}`);
-          }
-        } else {
-          // userIdが指定されていない場合は、メッセージを取得しただけ
-          messagesNew++;
-        }
-      } catch (error: any) {
-        errors.push(`Error processing message ${message.message_id}: ${error.message}`);
-      }
-    }
-
-    // ルーム数をカウント（簡易版：実際には各メッセージのルームIDを集計する必要がある）
-    roomsChecked = messages.length > 0 ? 1 : 0;
-
-    return {
-      summary: {
-        users_processed: userId ? 1 : 0,
-        rooms_checked: roomsChecked,
-        messages_fetched: messages.length,
-        messages_new: messagesNew,
-        self_messages_skipped: selfMessagesSkipped,
-        errors
-      },
-      details,
-      processingTimeMs: Date.now() - startTime
-    };
-  } catch (error: any) {
-    errors.push(`Chatwork polling error: ${error.message}`);
-    return {
-      summary: {
-        users_processed: 0,
-        rooms_checked: 0,
-        messages_fetched: 0,
-        messages_new: 0,
-        self_messages_skipped: 0,
-        errors
-      },
-      details: [],
-      processingTimeMs: Date.now() - startTime
-    };
+    // レート制限を避けるため少し待機
+    await new Promise(resolve => setTimeout(resolve, 500));
   }
+
+  console.log(`[pollChatwork] 完了: ${targetUsers.length}ユーザー処理, ${totalNew}件の新規メッセージ`);
+
+  return {
+    summary: {
+      users_processed: targetUsers.length,
+      rooms_checked: 0,
+      messages_fetched: totalNew + totalSkipped,
+      messages_new: totalNew,
+      self_messages_skipped: 0,
+      errors: allErrors
+    },
+    details,
+    processingTimeMs: Date.now() - startTime
+  };
 }
-
-
-
-

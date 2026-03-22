@@ -2,12 +2,12 @@
  * LINE Webhook エンドポイント
  */
 import { Hono } from 'hono';
-import crypto from 'crypto';
 import { isLineClientAvailable, replyTextMessage } from '../services/line';
 import { processForwardedMessage } from '../services/message-processor';
 import { handleLineAction, handleEditModeMessage } from '../services/action-handler';
 import { isUserAllowedSync } from '../utils/security';
 import { getEditMode } from '../services/edit-mode';
+import { getSupabase, isSupabaseAvailable } from '../db/client';
 import type {
   LineWebhookRequest,
   LineWebhookEvent,
@@ -17,19 +17,60 @@ import type {
 
 export const lineWebhook = new Hono();
 
+function decodeBase64(value: string): Uint8Array {
+  if (typeof atob === 'function') {
+    const decoded = atob(value);
+    const bytes = new Uint8Array(decoded.length);
+    for (let i = 0; i < decoded.length; i += 1) {
+      bytes[i] = decoded.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  const bufferCtor = (globalThis as { Buffer?: typeof Buffer }).Buffer;
+  if (bufferCtor) {
+    return new Uint8Array(bufferCtor.from(value, 'base64'));
+  }
+
+  throw new Error('No base64 decoder available');
+}
+
+function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  let diff = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    diff |= a[i] ^ b[i];
+  }
+  return diff === 0;
+}
+
 // LINE署名検証
-function verifyLineSignature(body: string, signature: string): boolean {
+async function verifyLineSignature(body: string, signature: string): Promise<boolean> {
   const channelSecret = process.env.LINE_CHANNEL_SECRET;
   if (!channelSecret) {
     return false;
   }
 
-  const hash = crypto
-    .createHmac('sha256', channelSecret)
-    .update(body)
-    .digest('base64');
+  try {
+    const key = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode(channelSecret),
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
 
-  return hash === signature;
+    const digest = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(body));
+    const expected = new Uint8Array(digest);
+    const received = decodeBase64(signature);
+    return timingSafeEqual(expected, received);
+  } catch (error) {
+    console.error('[LINE署名検証エラー]', error);
+    return false;
+  }
 }
 
 lineWebhook.post('/webhook', async (c) => {
@@ -52,7 +93,7 @@ lineWebhook.post('/webhook', async (c) => {
     const signature = c.req.header('X-Line-Signature');
     const body = await c.req.text();
 
-    if (!signature || !verifyLineSignature(body, signature)) {
+    if (!signature || !(await verifyLineSignature(body, signature))) {
       return c.json(
         {
           status: 'error',
@@ -112,36 +153,69 @@ lineWebhook.post('/webhook', async (c) => {
       } else if (eventType === 'follow') {
         // ユーザー登録とウェルカムメッセージ
         console.log('User followed:', userId);
-        console.log('Follow event details:', JSON.stringify(event, null, 2));
-        
-        // ウェルカムメッセージを送信
-        if (event.replyToken) {
-          console.log('Sending welcome message with replyToken:', event.replyToken);
-          const welcomeMessage = 'SafeReplyへようこそ！\n\nメッセージを転送すると、AIが自動で返信ドラフトを作成します。';
-          const success = await replyTextMessage(event.replyToken, welcomeMessage);
-          if (success) {
-            console.log('Welcome message sent successfully');
-          } else {
-            console.error('Failed to send welcome message');
+
+        // DBにユーザーを自動登録（既存なら再アクティブ化）
+        try {
+          if (isSupabaseAvailable()) {
+            const supabase = getSupabase();
+            // 既存ユーザーを確認
+            const { data: existing } = await (supabase.from('users') as any)
+              .select('id, status')
+              .eq('line_user_id', userId)
+              .single();
+
+            if (existing) {
+              // 既存ユーザー → 再フォロー時はpendingに戻す（削除済みの場合）
+              if (existing.status === 'deleted' || existing.status === 'suspended') {
+                await (supabase.from('users') as any)
+                  .update({ status: 'pending', updated_at: new Date().toISOString() })
+                  .eq('id', existing.id);
+                console.log(`User reactivated: ${userId} → pending`);
+              }
+            } else {
+              // 新規ユーザー作成（pending状態）
+              const { error: insertError } = await (supabase.from('users') as any)
+                .insert({
+                  line_user_id: userId,
+                  status: 'pending',
+                  is_active: true
+                });
+              if (insertError) {
+                console.error('Failed to create user:', insertError);
+              } else {
+                console.log(`New user created: ${userId} (pending)`);
+              }
+            }
           }
-        } else {
-          console.warn('No replyToken found in follow event, using push message instead');
-          // replyTokenがない場合はプッシュメッセージを使用
-          const welcomeMessage = 'SafeReplyへようこそ！\n\nメッセージを転送すると、AIが自動で返信ドラフトを作成します。';
-          const { sendTextMessage } = await import('../services/line');
-          const success = await sendTextMessage(userId, welcomeMessage);
-          if (success) {
-            console.log('Welcome message sent via push message');
-          } else {
-            console.error('Failed to send welcome message via push message');
-          }
+        } catch (dbError) {
+          console.error('DB error during user registration:', dbError);
         }
-        
-        // TODO: ユーザー登録処理（データベースへの登録は後で実装）
+
+        // ウェルカムメッセージ + LIFF設定画面への誘導
+        const liffId = process.env.LIFF_ID || '';
+        const liffUrl = liffId ? `\n\n初期設定はこちら：\nhttps://liff.line.me/${liffId}` : '';
+        const welcomeMessage = `SafeReplyへようこそ！\n\nメッセージを転送すると、AIが自動で返信ドラフトを作成します。${liffUrl}`;
+
+        if (event.replyToken) {
+          await replyTextMessage(event.replyToken, welcomeMessage);
+        } else {
+          const { sendTextMessage } = await import('../services/line');
+          await sendTextMessage(userId, welcomeMessage);
+        }
       } else if (eventType === 'unfollow') {
         // ユーザー無効化
         console.log('User unfollowed:', userId);
-        // TODO: ユーザー無効化処理（データベースでの無効化は後で実装）
+        try {
+          if (isSupabaseAvailable()) {
+            const supabase = getSupabase();
+            await (supabase.from('users') as any)
+              .update({ status: 'deleted', updated_at: new Date().toISOString() })
+              .eq('line_user_id', userId);
+            console.log(`User deactivated: ${userId} → deleted`);
+          }
+        } catch (dbError) {
+          console.error('DB error during user deactivation:', dbError);
+        }
       }
     }
 
@@ -164,4 +238,3 @@ lineWebhook.post('/webhook', async (c) => {
     );
   }
 });
-

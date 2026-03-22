@@ -5,6 +5,29 @@ import OpenAI from 'openai';
 import type { AIProvider, MessageContext, AIProviderConfig } from './provider';
 import type { TriageResult, TriageType } from '../types/triage';
 import { buildTriagePrompt, buildDraftPrompt, buildSoftenPrompt } from './prompts';
+import { getSupabase, isSupabaseAvailable } from '../db/client';
+
+/**
+ * usage_logsテーブルに利用量を記録
+ */
+async function logUsage(
+  userId: string | undefined,
+  operation: string,
+  tokensUsed: number
+): Promise<void> {
+  if (!userId || !isSupabaseAvailable()) return;
+  try {
+    const supabase = getSupabase();
+    await (supabase.from('usage_logs') as any).insert({
+      user_id: userId,
+      service: 'openai',
+      operation,
+      tokens_used: tokensUsed
+    });
+  } catch (error) {
+    console.warn('[logUsage] Failed to log usage:', error);
+  }
+}
 
 /**
  * OpenAI Providerクラス
@@ -37,6 +60,14 @@ export class OpenAIProvider implements AIProvider {
     };
   }
 
+  /** 利用量ログ用のユーザーID（ポーリング時にセットされる） */
+  private _currentUserId?: string;
+
+  /** ユーザーIDをセット（利用量ログ用） */
+  setUserId(userId: string | undefined): void {
+    this._currentUserId = userId;
+  }
+
   /**
    * メッセージをトリアージ（Type A/B/C分類）
    */
@@ -44,15 +75,17 @@ export class OpenAIProvider implements AIProvider {
     const prompt = buildTriagePrompt(context);
 
     try {
-      const response = await this.callAPI(prompt, {
-        temperature: 0.3, // トリアージは一貫性重視
+      const { content, totalTokens } = await this.callAPIWithUsage(prompt, {
+        temperature: 0.3,
         maxTokens: 500
       });
 
-      return this.parseTriageResponse(response);
+      // 利用量ログ
+      logUsage(this._currentUserId, 'triage', totalTokens);
+
+      return this.parseTriageResponse(content);
     } catch (error: any) {
       console.error('OpenAI triage error:', error);
-      // エラー時はデフォルトでType Bを返す
       return {
         type: 'B',
         confidence: 0.0,
@@ -73,12 +106,14 @@ export class OpenAIProvider implements AIProvider {
     const prompt = buildDraftPrompt(context, triageType, tone);
 
     try {
-      const response = await this.callAPI(prompt, {
-        temperature: 0.7, // ドラフト生成は創造性重視
+      const { content, totalTokens } = await this.callAPIWithUsage(prompt, {
+        temperature: 0.7,
         maxTokens: this.config.maxTokens
       });
 
-      return this.parseDraftResponse(response);
+      logUsage(this._currentUserId, 'draft', totalTokens);
+
+      return this.parseDraftResponse(content);
     } catch (error: any) {
       console.error('OpenAI draft generation error:', error);
       throw new Error(`Failed to generate draft: ${error.message}`);
@@ -97,18 +132,33 @@ export class OpenAIProvider implements AIProvider {
     const prompt = buildSoftenPrompt(context, senderName, triageType, draftReply);
 
     try {
-      const response = await this.callAPI(prompt, {
-        temperature: 0.75, // バリエーションを出すため少し高めに
-        maxTokens: 600 // 300文字程度の出力を想定
+      const { content, totalTokens } = await this.callAPIWithUsage(prompt, {
+        temperature: 0.75,
+        maxTokens: 600
       });
 
-      return this.parseDraftResponse(response); // 同じパースロジックを使用
+      logUsage(this._currentUserId, 'soften', totalTokens);
+
+      return this.parseDraftResponse(content);
     } catch (error: any) {
       console.error('OpenAI soften message error:', error);
-      // エラー時は元のメッセージを返す（フォールバック）
       return context.body;
     }
   }
+
+  /**
+   * OpenAI APIを呼び出し（利用量情報付き）
+   */
+  private async callAPIWithUsage(
+    prompt: string,
+    options: { temperature?: number; maxTokens?: number } = {}
+  ): Promise<{ content: string; totalTokens: number }> {
+    const content = await this.callAPI(prompt, options);
+    // callAPIでは直接トークン数を取れないため、_lastTotalTokensを参照
+    return { content, totalTokens: this._lastTotalTokens };
+  }
+
+  private _lastTotalTokens: number = 0;
 
   /**
    * OpenAI APIを呼び出し（リトライロジック付き）
@@ -159,6 +209,9 @@ export class OpenAIProvider implements AIProvider {
             contentLength: response.choices[0]?.message?.content?.length || 0
           });
         }
+
+        // トークン使用量を保存
+        this._lastTotalTokens = response.usage?.total_tokens ?? 0;
 
         const content = response.choices[0]?.message?.content;
         if (!content) {

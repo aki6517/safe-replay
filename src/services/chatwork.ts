@@ -48,10 +48,10 @@ export interface ChatworkMessage {
 
 /**
  * Chatwork APIクライアントを作成
+ * @param userApiToken - ユーザー固有のAPIトークン（per-user対応）
  */
-function createChatworkClient(): ChatworkClientConfig | null {
-  // 環境変数から認証情報を取得（関数内で読み込むことで、dotenv.config()後に確実に読み込まれる）
-  const apiToken = process.env.CHATWORK_API_TOKEN;
+function createChatworkClient(userApiToken?: string): ChatworkClientConfig | null {
+  const apiToken = userApiToken || process.env.CHATWORK_API_TOKEN;
   const myIdStr = process.env.CHATWORK_MY_ID;
 
   if (!apiToken) {
@@ -67,12 +67,14 @@ function createChatworkClient(): ChatworkClientConfig | null {
   };
 }
 
+/** グローバルクライアント（環境変数ベース、後方互換用） */
 let chatworkClient: ChatworkClientConfig | null = null;
 
 /**
  * Chatwork APIクライアントが利用可能かチェック
  */
-export function isChatworkClientAvailable(): boolean {
+export function isChatworkClientAvailable(userApiToken?: string): boolean {
+  if (userApiToken) return true;
   if (!chatworkClient) {
     chatworkClient = createChatworkClient();
   }
@@ -82,7 +84,12 @@ export function isChatworkClientAvailable(): boolean {
 /**
  * Chatwork APIクライアントを取得（利用可能でない場合はエラー）
  */
-function getChatworkClient(): ChatworkClientConfig {
+function getChatworkClient(userApiToken?: string): ChatworkClientConfig {
+  if (userApiToken) {
+    const client = createChatworkClient(userApiToken);
+    if (!client) throw new Error('Chatwork API token not configured');
+    return client;
+  }
   if (!chatworkClient) {
     chatworkClient = createChatworkClient();
   }
@@ -93,13 +100,21 @@ function getChatworkClient(): ChatworkClientConfig {
 }
 
 /**
+ * ユーザー固有のChatworkクライアントを作成（マルチユーザーポーリング用）
+ */
+export function createChatworkClientForUser(apiToken: string): ChatworkClientConfig | null {
+  return createChatworkClient(apiToken);
+}
+
+/**
  * APIリクエストを実行
  */
 async function apiRequest<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  userApiToken?: string
 ): Promise<T> {
-  const client = getChatworkClient();
+  const client = getChatworkClient(userApiToken);
   const url = `${CHATWORK_API_BASE}${endpoint}`;
 
   const response = await fetch(url, {
@@ -142,8 +157,8 @@ async function apiRequest<T>(
 /**
  * 自分のChatwork IDを取得
  */
-export async function getMyId(): Promise<number> {
-  const client = getChatworkClient();
+export async function getMyId(userApiToken?: string): Promise<number> {
+  const client = getChatworkClient(userApiToken);
 
   // 環境変数で設定されている場合はそれを使用
   if (client.myId) {
@@ -151,7 +166,7 @@ export async function getMyId(): Promise<number> {
   }
 
   try {
-    const me = await apiRequest<{ account_id: number }>('/me');
+    const me = await apiRequest<{ account_id: number }>('/me', {}, userApiToken);
     return me.account_id;
   } catch (error) {
     console.error('Failed to get my Chatwork ID:', error);
@@ -162,13 +177,13 @@ export async function getMyId(): Promise<number> {
 /**
  * 参加中のルーム一覧を取得
  */
-export async function getRooms(): Promise<ChatworkRoom[]> {
-  if (!isChatworkClientAvailable()) {
+export async function getRooms(userApiToken?: string): Promise<ChatworkRoom[]> {
+  if (!isChatworkClientAvailable(userApiToken)) {
     throw new Error('Chatwork API token not configured');
   }
 
   try {
-    const rooms = await apiRequest<ChatworkRoom[]>('/rooms');
+    const rooms = await apiRequest<ChatworkRoom[]>('/rooms', {}, userApiToken);
     return rooms || [];
   } catch (error) {
     console.error('Failed to get Chatwork rooms:', error);
@@ -183,18 +198,18 @@ export async function getRooms(): Promise<ChatworkRoom[]> {
  * @returns メッセージのリスト
  */
 export async function getRoomMessages(
-  roomId: number
+  roomId: number,
+  userApiToken?: string
 ): Promise<ChatworkMessage[]> {
-  if (!isChatworkClientAvailable()) {
+  if (!isChatworkClientAvailable(userApiToken)) {
     throw new Error('Chatwork API token not configured');
   }
 
   try {
     const messages = await apiRequest<ChatworkMessage[]>(
-      `/rooms/${roomId}/messages`,
-      {
-        method: 'GET'
-      }
+      `/rooms/${roomId}/messages?force=1`,
+      { method: 'GET' },
+      userApiToken
     );
     return messages || [];
   } catch (error) {
@@ -212,8 +227,14 @@ export async function getRoomMessages(
  */
 export function isMessageToMe(
   message: ChatworkMessage,
-  myId: number
+  myId: number,
+  roomType?: string
 ): boolean {
+  // ダイレクトチャットでは相手からの全メッセージを自分宛として扱う
+  if (roomType === 'direct') {
+    return message.account.account_id !== myId;
+  }
+
   // メッセージ本文に「[To:自分のID]」が含まれているかチェック
   const toPattern = new RegExp(`\\[To:${myId}\\]`, 'g');
   return toPattern.test(message.body);
@@ -228,27 +249,33 @@ export function isMessageToMe(
  */
 export async function getMessagesToMe(
   maxResults: number = 50,
-  daysBack: number = 7
+  daysBack: number = 7,
+  userApiToken?: string
 ): Promise<ChatworkMessage[]> {
-  if (!isChatworkClientAvailable()) {
+  if (!isChatworkClientAvailable(userApiToken)) {
     throw new Error('Chatwork API token not configured');
   }
 
   try {
     // 自分のIDを取得
-    const myId = await getMyId();
+    const myId = await getMyId(userApiToken);
 
     // 日付フィルタリング用のタイムスタンプを計算（過去N日間）
     const cutoffTimestamp = Math.floor((Date.now() - daysBack * 24 * 60 * 60 * 1000) / 1000);
 
     // ルーム一覧を取得
-    const rooms = await getRooms();
+    const rooms = await getRooms(userApiToken);
     const messagesToMe: ChatworkMessage[] = [];
 
+    // API制限回避のため、未読またはメンションのあるルームのみ対象にする
+    const candidateRooms = rooms
+      .filter((room) => room.unread_num > 0 || room.mention_num > 0)
+      .sort((a, b) => (b.mention_num + b.unread_num) - (a.mention_num + a.unread_num));
+
     // 各ルームからメッセージを取得
-    for (const room of rooms) {
+    for (const room of candidateRooms) {
       try {
-        const messages = await getRoomMessages(room.room_id);
+        const messages = await getRoomMessages(room.room_id, userApiToken);
 
         // 自分宛メッセージをフィルタリング
         for (const message of messages) {
@@ -258,7 +285,7 @@ export async function getMessagesToMe(
           }
 
           // 自分宛メッセージかチェック
-          if (isMessageToMe(message, myId)) {
+          if (isMessageToMe(message, myId, room.type)) {
             // 自分自身のメッセージは除外（無限ループ防止）
             if (message.account.account_id !== myId) {
               // ルームIDを追加
@@ -323,9 +350,10 @@ export function extractMessageText(message: ChatworkMessage): string {
  */
 export async function sendChatworkMessage(
   roomId: number,
-  message: string
+  message: string,
+  userApiToken?: string
 ): Promise<boolean> {
-  if (!isChatworkClientAvailable()) {
+  if (!isChatworkClientAvailable(userApiToken)) {
     console.error('Chatwork API token not configured');
     return false;
   }
@@ -336,7 +364,7 @@ export async function sendChatworkMessage(
       {
         method: 'POST',
         headers: {
-          'X-ChatWorkToken': getChatworkClient().apiToken,
+          'X-ChatWorkToken': getChatworkClient(userApiToken).apiToken,
           'Content-Type': 'application/x-www-form-urlencoded'
         },
         body: new URLSearchParams({
@@ -371,4 +399,3 @@ export async function sendChatworkMessage(
     return false;
   }
 }
-
