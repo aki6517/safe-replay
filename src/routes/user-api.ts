@@ -4,6 +4,8 @@
  */
 import { Hono } from 'hono';
 import { getSupabase, isSupabaseAvailable } from '../db/client';
+import { isSlackOAuthConfigured } from '../services/slack';
+import { getAuthenticatedLineUserId } from '../utils/liff-auth';
 
 export const userApiRouter = new Hono();
 
@@ -12,8 +14,12 @@ export const userApiRouter = new Hono();
  */
 userApiRouter.post('/status', async (c) => {
   try {
-    const { lineUserId } = await c.req.json();
-    
+    const body = await c.req.json();
+    const lineUserId = await getAuthenticatedLineUserId(
+      c.req.header('Authorization'),
+      body.lineUserId
+    );
+
     if (!lineUserId) {
       return c.json({ error: 'lineUserId is required' }, 400);
     }
@@ -48,11 +54,33 @@ userApiRouter.post('/status', async (c) => {
       user = newUser;
     }
 
+    const { data: slackInstallations, error: slackError } = await (supabase.from('slack_installations') as any)
+      .select('id, slack_team_id, slack_team_name, slack_user_id')
+      .eq('line_user_id', lineUserId)
+      .eq('is_active', true)
+      .order('installed_at', { ascending: true });
+
+    if (slackError) {
+      console.error('[Slack連携状態取得エラー]', slackError);
+      return c.json({ error: 'Failed to load Slack status' }, 500);
+    }
+
+    const slackWorkspaces = (slackInstallations || []).map((installation: any) => ({
+      id: installation.id,
+      teamId: installation.slack_team_id,
+      teamName: installation.slack_team_name || installation.slack_team_id,
+      slackUserId: installation.slack_user_id
+    }));
+
     // 連携状態を返す
     return c.json({
       userId: user?.id,
       gmailConnected: !!user?.gmail_refresh_token,
       chatworkConnected: !!user?.chatwork_api_token,
+      slackConnected: slackWorkspaces.length > 0,
+      slackWorkspaceCount: slackWorkspaces.length,
+      slackWorkspaces,
+      slackOauthConfigured: isSlackOAuthConfigured(),
       status: user?.status
     });
 
@@ -67,8 +95,13 @@ userApiRouter.post('/status', async (c) => {
  */
 userApiRouter.post('/chatwork', async (c) => {
   try {
-    const { lineUserId, chatworkToken } = await c.req.json();
-    
+    const body = await c.req.json();
+    const lineUserId = await getAuthenticatedLineUserId(
+      c.req.header('Authorization'),
+      body.lineUserId
+    );
+    const { chatworkToken } = body;
+
     if (!lineUserId || !chatworkToken) {
       return c.json({ error: 'lineUserId and chatworkToken are required' }, 400);
     }
@@ -105,8 +138,12 @@ userApiRouter.post('/chatwork', async (c) => {
  */
 userApiRouter.post('/complete', async (c) => {
   try {
-    const { lineUserId } = await c.req.json();
-    
+    const body = await c.req.json();
+    const lineUserId = await getAuthenticatedLineUserId(
+      c.req.header('Authorization'),
+      body.lineUserId
+    );
+
     if (!lineUserId) {
       return c.json({ error: 'lineUserId is required' }, 400);
     }
@@ -153,4 +190,3 @@ userApiRouter.post('/complete', async (c) => {
     return c.json({ error: error.message }, 500);
   }
 });
-
