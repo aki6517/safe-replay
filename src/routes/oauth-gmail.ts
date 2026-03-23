@@ -3,17 +3,73 @@
  * ユーザーがGoogleで認証後、トークンを保存
  */
 import { Hono } from 'hono';
-import { google } from 'googleapis';
 import { getSupabase, isSupabaseAvailable } from '../db/client';
+import { getBaseUrlFromRequest, getLiffWebBaseUrl, joinBaseUrl } from '../utils/base-url';
 
 export const oauthGmailRouter = new Hono();
 
-// LIFF用OAuth（ウェブアプリケーションクライアント）
-// 既存のデスクトップクライアントとは別に、ウェブアプリ用を使用
-const GOOGLE_CLIENT_ID = process.env.GMAIL_WEB_CLIENT_ID || process.env.GMAIL_CLIENT_ID || '';
-const GOOGLE_CLIENT_SECRET = process.env.GMAIL_WEB_CLIENT_SECRET || process.env.GMAIL_CLIENT_SECRET || '';
-const BASE_URL = process.env.BASE_URL || 'https://your-app.railway.app';
-const REDIRECT_URI = `${BASE_URL}/api/oauth/gmail/callback`;
+type OAuthTokens = {
+  access_token?: string;
+  refresh_token?: string;
+  expiry_date?: number | null;
+};
+
+async function exchangeCodeViaOAuthApi(
+  code: string,
+  clientId: string,
+  clientSecret: string,
+  redirectUri: string
+): Promise<OAuthTokens> {
+  const body = new URLSearchParams({
+    code,
+    client_id: clientId,
+    client_secret: clientSecret,
+    redirect_uri: redirectUri,
+    grant_type: 'authorization_code'
+  });
+
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => '');
+    throw new Error(`OAuth token exchange failed: ${response.status} ${errorBody}`);
+  }
+
+  const data = (await response.json()) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+  };
+
+  return {
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+    expiry_date: data.expires_in ? Date.now() + data.expires_in * 1000 : null
+  };
+}
+
+async function getEmailAddressViaGmailApi(accessToken: string): Promise<string | undefined> {
+  const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => '');
+    throw new Error(`Failed to get profile via Gmail REST API: ${response.status} ${errorBody}`);
+  }
+
+  const profile = (await response.json()) as { emailAddress?: string };
+  return profile.emailAddress;
+}
 
 /**
  * Gmail OAuth コールバック
@@ -21,46 +77,49 @@ const REDIRECT_URI = `${BASE_URL}/api/oauth/gmail/callback`;
  */
 oauthGmailRouter.get('/callback', async (c) => {
   try {
+    const apiBaseUrl = getBaseUrlFromRequest(c.req.url);
+    const webBaseUrl = getLiffWebBaseUrl(c.req.url);
+    const redirectUri = joinBaseUrl(apiBaseUrl, '/api/oauth/gmail/callback');
+    const liffSuccessUrl = joinBaseUrl(webBaseUrl, '/callback/success');
+    const liffErrorBaseUrl = joinBaseUrl(webBaseUrl, '/callback/error');
+    const googleClientId = process.env.GMAIL_WEB_CLIENT_ID || process.env.GMAIL_CLIENT_ID || '';
+    const googleClientSecret = process.env.GMAIL_WEB_CLIENT_SECRET || process.env.GMAIL_CLIENT_SECRET || '';
+
     const code = c.req.query('code');
     const state = c.req.query('state'); // LINE User ID
     const error = c.req.query('error');
 
     if (error) {
       console.error('[Gmail OAuth エラー]', error);
-      return c.redirect('/liff/callback/error?reason=' + encodeURIComponent(error));
+      return c.redirect(`${liffErrorBaseUrl}?reason=${encodeURIComponent(error)}`);
     }
 
     if (!code || !state) {
-      return c.redirect('/liff/callback/error?reason=missing_params');
+      return c.redirect(`${liffErrorBaseUrl}?reason=missing_params`);
     }
 
     const lineUserId = decodeURIComponent(state);
 
-    // OAuth2クライアントを作成
-    const oauth2Client = new google.auth.OAuth2(
-      GOOGLE_CLIENT_ID,
-      GOOGLE_CLIENT_SECRET,
-      REDIRECT_URI
-    );
+    if (!googleClientId || !googleClientSecret) {
+      return c.redirect(`${liffErrorBaseUrl}?reason=gmail_oauth_not_configured`);
+    }
 
-    // 認証コードをトークンに交換
-    const { tokens } = await oauth2Client.getToken(code);
+    const tokens = await exchangeCodeViaOAuthApi(code, googleClientId, googleClientSecret, redirectUri);
     
     if (!tokens.refresh_token) {
       console.error('[Gmail OAuth] refresh_token が取得できませんでした');
-      return c.redirect('/liff/callback/error?reason=no_refresh_token');
+      return c.redirect(`${liffErrorBaseUrl}?reason=no_refresh_token`);
     }
 
-    // ユーザーのメールアドレスを取得
-    oauth2Client.setCredentials(tokens);
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-    const profile = await gmail.users.getProfile({ userId: 'me' });
-    const emailAddress = profile.data.emailAddress;
+    let emailAddress: string | undefined;
+    if (tokens.access_token) {
+      emailAddress = await getEmailAddressViaGmailApi(tokens.access_token);
+    }
 
     // DBに保存
     const supabase = getSupabase();
     if (!supabase || !isSupabaseAvailable()) {
-      return c.redirect('/liff/callback/error?reason=db_unavailable');
+      return c.redirect(`${liffErrorBaseUrl}?reason=db_unavailable`);
     }
 
     const { error: updateError } = await (supabase.from('users') as any)
@@ -77,17 +136,19 @@ oauthGmailRouter.get('/callback', async (c) => {
 
     if (updateError) {
       console.error('[Gmail トークン保存エラー]', updateError);
-      return c.redirect('/liff/callback/error?reason=save_failed');
+      return c.redirect(`${liffErrorBaseUrl}?reason=save_failed`);
     }
 
     console.log('[Gmail OAuth 完了]', { lineUserId, emailAddress });
     
     // 成功ページにリダイレクト
-    return c.redirect('/liff/callback/success');
+    return c.redirect(liffSuccessUrl);
 
   } catch (error: any) {
     console.error('[Gmail OAuth エラー]', error);
-    return c.redirect('/liff/callback/error?reason=' + encodeURIComponent(error.message));
+    const webBaseUrl = getLiffWebBaseUrl(c.req.url);
+    const liffErrorBaseUrl = joinBaseUrl(webBaseUrl, '/callback/error');
+    return c.redirect(`${liffErrorBaseUrl}?reason=${encodeURIComponent(error.message)}`);
   }
 });
 
@@ -156,4 +217,3 @@ oauthGmailRouter.get('/error', (c) => {
     </html>
   `);
 });
-

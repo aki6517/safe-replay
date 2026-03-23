@@ -6,6 +6,7 @@ pnpm-lock.yaml
 
 # Build
 dist/
+liff-web-dist/
 *.tsbuildinfo
 
 # Environment
@@ -48,3 +49,5 @@ test-files/
 
 
 
+.vercel
+.env*.local

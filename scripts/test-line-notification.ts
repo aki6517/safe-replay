@@ -89,8 +89,29 @@ async function main() {
   );
   console.log(`Type C通知: ${typeCSuccess ? '✅ スキップ（正常）' : '❌ エラー'}\n`);
 
+  // 少し待機
+  await new Promise(resolve => setTimeout(resolve, 2000));
+
+  // Type C通知のテスト（明示ONで通知することを確認）
+  console.log('--- Type C通知テスト（明示ON） ---');
+  const typeCOptInSuccess = await sendLineNotification(
+    lineUserId,
+    testMessageId,
+    'C',
+    {
+      subject: 'FYI: 打ち合わせ日程の共有',
+      body: '来週の打ち合わせ候補日を共有します。返信は不要です。',
+      sender: '神谷小夜子',
+      source: 'Chatwork'
+    },
+    undefined,
+    {
+      notifyTypeC: true
+    }
+  );
+  console.log(`Type C通知(明示ON): ${typeCOptInSuccess ? '✅ 成功' : '❌ 失敗'}\n`);
+
   console.log('=== テスト完了 ===');
 }
 
 main().catch(console.error);
-

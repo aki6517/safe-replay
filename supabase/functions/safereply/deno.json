@@ -1,0 +1,19 @@
+{
+  "imports": {
+    "hono": "npm:hono@3.12.0",
+    "hono/cors": "npm:hono@3.12.0/cors",
+    "hono/html": "npm:hono@3.12.0/html",
+    "hono/logger": "npm:hono@3.12.0/logger",
+    "hono/pretty-json": "npm:hono@3.12.0/pretty-json",
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.39.0",
+    "@upstash/redis": "npm:@upstash/redis@1.25.0",
+    "openai": "npm:openai@4.20.1",
+    "mammoth": "npm:mammoth@1.6.0",
+    "pdf-parse": "npm:pdf-parse@1.1.1",
+    "pptx-parser": "npm:pptx-parser@1.0.0",
+    "xlsx": "npm:xlsx@0.18.5",
+    "jszip": "npm:jszip@3.10.1",
+    "xml2js": "npm:xml2js@0.6.2",
+    "zod": "npm:zod@3.22.4"
+  }
+}

@@ -81,7 +81,7 @@ async function testChatworkAPI() {
 
     if (messages.length === 0) {
       console.log('   ℹ️  自分宛メッセージがありません');
-      console.log('   💡 テスト用にChatworkで自分宛メッセージ（[To:自分のID]）を作成してください\n');
+      console.log('   💡 テスト用にChatworkで自分宛メッセージ（[To:自分のID] または directルームの受信）を作成してください\n');
     } else {
       // 6. メッセージの詳細表示
       console.log('6️⃣ メッセージの詳細表示...\n');
@@ -122,5 +122,4 @@ async function testChatworkAPI() {
 }
 
 testChatworkAPI();
-
 

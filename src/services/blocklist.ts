@@ -3,7 +3,7 @@
  * 
  * 特定のメールアドレスからの通知をブロックする機能
  */
-import { redis, isRedisAvailable } from '../db/redis';
+import { redis, isRedisAvailable, markRedisUnavailable } from '../db/redis';
 import { getSupabase } from '../db/client';
 
 const BLOCKLIST_KEY_PREFIX = 'blocklist:';
@@ -28,6 +28,7 @@ export async function addToBlocklist(userId: string, emailAddress: string): Prom
       return true;
     } catch (error) {
       console.error('[ブロックリスト] Redis追加エラー:', error);
+      markRedisUnavailable(error);
     }
   }
 
@@ -71,6 +72,7 @@ export async function removeFromBlocklist(userId: string, emailAddress: string):
       return true;
     } catch (error) {
       console.error('[ブロックリスト] Redis削除エラー:', error);
+      markRedisUnavailable(error);
     }
   }
 
@@ -111,6 +113,7 @@ export async function isBlocked(userId: string, emailAddress: string): Promise<b
       }
     } catch (error) {
       console.error('[ブロックリスト] Redisチェックエラー:', error);
+      markRedisUnavailable(error);
     }
   }
 
@@ -149,6 +152,7 @@ export async function getBlocklist(userId: string): Promise<string[]> {
       emails.forEach((email: string) => blockedEmails.add(email));
     } catch (error) {
       console.error('[ブロックリスト] Redis取得エラー:', error);
+      markRedisUnavailable(error);
     }
   }
 
@@ -211,5 +215,4 @@ export async function isDomainBlocked(userId: string, emailAddress: string): Pro
   // ドメイン単位でのブロックチェック
   return await isBlocked(userId, `*@${domain}`);
 }
-
 

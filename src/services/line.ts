@@ -1,57 +1,52 @@
 /**
  * LINE Messaging API サービス
  */
-import { Client, ClientConfig, TextMessage, FlexMessage } from '@line/bot-sdk';
+import type { FlexMessage, LineMessage, TextMessage } from '../types/line-messaging';
 
-// 開発環境では環境変数が設定されていない場合でもエラーを投げない
-let lineClient: Client | null = null;
+const LINE_MESSAGE_API_BASE_URL = 'https://api.line.me/v2/bot/message';
 
-/**
- * LINEクライアントを初期化（遅延初期化）
- */
-function initializeLineClient(): void {
-  if (lineClient !== null) {
-    return; // 既に初期化済み
-  }
+type LineConfig = {
+  channelAccessToken: string;
+  channelSecret: string;
+};
 
+function getLineConfig(): LineConfig | null {
   const channelAccessToken = process.env.LINE_CHANNEL_ACCESS_TOKEN;
   const channelSecret = process.env.LINE_CHANNEL_SECRET;
 
-  if (channelAccessToken && channelSecret) {
-    const config: ClientConfig = {
-      channelAccessToken,
-      channelSecret
-    };
-    lineClient = new Client(config);
-  } else {
-    console.warn('⚠️  LINE Messaging API credentials not configured');
+  if (!channelAccessToken || !channelSecret) {
+    return null;
   }
+
+  return { channelAccessToken, channelSecret };
 }
 
-// モジュール読み込み時に一度初期化を試みる
-initializeLineClient();
+async function callLineMessagingApi(path: string, payload: Record<string, unknown>): Promise<void> {
+  const config = getLineConfig();
+  if (!config) {
+    throw new Error('LINE Messaging API credentials not configured');
+  }
 
-export { lineClient };
+  const response = await fetch(`${LINE_MESSAGE_API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.channelAccessToken}`
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => '');
+    throw new Error(
+      `LINE Messaging API request failed: ${response.status} ${response.statusText} ${errorBody}`
+    );
+  }
+}
 
 // クライアントが利用可能かチェックする関数
 export function isLineClientAvailable(): boolean {
-  // 再初期化を試みる（環境変数が後から設定された場合に対応）
-  if (lineClient === null) {
-    initializeLineClient();
-  }
-  return lineClient !== null;
-}
-
-// クライアントを取得（利用可能でない場合はエラー）
-export function getLineClient(): Client {
-  // 再初期化を試みる（環境変数が後から設定された場合に対応）
-  if (lineClient === null) {
-    initializeLineClient();
-  }
-  if (!lineClient) {
-    throw new Error('LINE Messaging API credentials not configured');
-  }
-  return lineClient;
+  return getLineConfig() !== null;
 }
 
 /**
@@ -62,18 +57,15 @@ export function getLineClient(): Client {
  * @returns 成功時true、失敗時false
  */
 export async function sendTextMessage(userId: string, text: string): Promise<boolean> {
-  if (!isLineClientAvailable()) {
-    console.error('LINE Messaging API credentials not configured');
-    return false;
-  }
-
   try {
-    const client = getLineClient();
     const message: TextMessage = {
       type: 'text',
       text
     };
-    await client.pushMessage(userId, message);
+    await callLineMessagingApi('/push', {
+      to: userId,
+      messages: [message]
+    });
     return true;
   } catch (error) {
     console.error('LINEメッセージ送信エラー:', error);
@@ -89,18 +81,15 @@ export async function sendTextMessage(userId: string, text: string): Promise<boo
  * @returns 成功時true、失敗時false
  */
 export async function replyTextMessage(replyToken: string, text: string): Promise<boolean> {
-  if (!isLineClientAvailable()) {
-    console.error('LINE Messaging API credentials not configured');
-    return false;
-  }
-
   try {
-    const client = getLineClient();
     const message: TextMessage = {
       type: 'text',
       text
     };
-    await client.replyMessage(replyToken, message);
+    await callLineMessagingApi('/reply', {
+      replyToken,
+      messages: [message]
+    });
     return true;
   } catch (error) {
     console.error('LINEメッセージ返信エラー:', error);
@@ -123,19 +112,15 @@ export async function sendFlexMessage(
     notificationDisabled?: boolean; // 静音通知（通知音を無効化）
   }
 ): Promise<boolean> {
-  if (!isLineClientAvailable()) {
-    console.error('LINE Messaging API credentials not configured');
-    return false;
-  }
-
   try {
-    const client = getLineClient();
-    // LINE Bot SDKのpushMessageは第3引数にnotificationDisabledを直接渡す
-    await client.pushMessage(userId, flexMessage, options?.notificationDisabled ?? false);
+    await callLineMessagingApi('/push', {
+      to: userId,
+      messages: [flexMessage as LineMessage],
+      notificationDisabled: options?.notificationDisabled ?? false
+    });
     return true;
   } catch (error) {
     console.error('LINE Flex Message送信エラー:', error);
     return false;
   }
 }
-

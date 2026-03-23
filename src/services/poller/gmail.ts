@@ -7,10 +7,10 @@ import {
   extractMessageHeaders,
   getThreadHistory,
   isGmailClientAvailable,
-  type GmailMessage
+  type GmailMessage,
+  type GmailMessagePart
 } from '../gmail';
-import { gmail_v1 } from 'googleapis';
-import { redis, isRedisAvailable } from '../../db/redis';
+import { redis, isRedisAvailable, markRedisUnavailable } from '../../db/redis';
 import { getSupabase } from '../../db/client';
 import { triageMessage } from '../../ai/triage';
 import { generateDraft } from '../../ai/draft';
@@ -31,6 +31,7 @@ async function getProcessedMessageIds(userId: string): Promise<Set<string>> {
     return new Set(ids as string[]);
   } catch (error) {
     console.error('Failed to get processed message IDs from Redis:', error);
+    markRedisUnavailable(error);
     return new Set();
   }
 }
@@ -50,6 +51,7 @@ async function markMessageAsProcessed(userId: string, messageId: string): Promis
     await redis.expire(key, 30 * 24 * 60 * 60);
   } catch (error) {
     console.error('Failed to mark message as processed in Redis:', error);
+    markRedisUnavailable(error);
   }
 }
 
@@ -419,7 +421,7 @@ export async function pollGmail(
         // 添付ファイルの数をカウント（簡易版）
         if (message.payload?.parts) {
           const attachmentParts = message.payload.parts.filter(
-            (part: gmail_v1.Schema$MessagePart) => part.filename && part.filename.length > 0
+            (part: GmailMessagePart) => part.filename && part.filename.length > 0
           );
           attachmentsParsed += attachmentParts.length;
         }
@@ -456,4 +458,3 @@ export async function pollGmail(
     };
   }
 }
-

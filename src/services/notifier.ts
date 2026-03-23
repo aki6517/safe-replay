@@ -25,10 +25,15 @@ export async function sendLineNotification(
     sender: string;
     source: string;
   },
-  draft?: string
+  draft?: string,
+  options?: {
+    notifyTypeC?: boolean;
+  }
 ): Promise<boolean> {
+  const isTypeCNotification = triageType === 'C' && options?.notifyTypeC === true;
+
   // Type Cは通知しない（ログのみ）
-  if (triageType === 'C') {
+  if (triageType === 'C' && !isTypeCNotification) {
     console.log('[Type C] 通知スキップ:', {
       userId,
       messageId,
@@ -78,8 +83,8 @@ export async function sendLineNotification(
         notificationText += `--- メッセージ内容 ---\n${message.body}`;
         success = await sendTextMessage(userId, notificationText);
       }
-    } else if (triageType === 'B') {
-      // Type B: Flex Messageを使用（静音通知）
+    } else if (triageType === 'B' || isTypeCNotification) {
+      // Type B/Type C(オプション): Flex Messageを使用（静音通知）
       const { createTypeBFlexMessage } = await import('./flex-messages/type-b');
       const { sendFlexMessage } = await import('./line');
       
@@ -89,7 +94,9 @@ export async function sendLineNotification(
         body: message.body,
         sender: message.sender,
         source: message.source,
-        draft // 返信案も渡す
+        draft, // 返信案も渡す
+        variant: isTypeCNotification ? 'type-c' : 'type-b',
+        supportsAcknowledge: message.source === 'Gmail' && !isTypeCNotification
       });
       
       // デバッグ用: Flex MessageのJSONを出力（開発環境のみ）
@@ -171,4 +178,3 @@ async function recordNotification(
     // エラーが発生しても通知送信自体は成功しているので、エラーを再スローしない
   }
 }
-

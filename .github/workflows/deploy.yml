@@ -1,4 +1,4 @@
-name: CI
+name: CI and Deploy
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:  # 手動実行用
 
 jobs:
-  ci:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -31,8 +31,19 @@ jobs:
       - name: Build
         run: npm run build
 
-  # 注意: RailwayはGitHubリポジトリと連携している場合、
-  # 自動的にデプロイするため、このジョブは不要です。
-  # Railwayの自動デプロイ機能を使用してください。
+      - name: Prepare Edge source
+        run: npm run sync:edge-source
 
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
 
+      - name: Deploy Supabase Edge Function
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: |
+          supabase functions deploy safereply \
+            --project-ref "$SUPABASE_PROJECT_REF" \
+            --no-verify-jwt

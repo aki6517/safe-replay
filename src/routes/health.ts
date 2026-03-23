@@ -3,7 +3,8 @@
  */
 import { Hono } from 'hono';
 import { supabase, isSupabaseAvailable } from '../db/client';
-import { redis, isRedisAvailable } from '../db/redis';
+import { redis, isRedisAvailable, markRedisUnavailable } from '../db/redis';
+import { getUptimeSeconds } from '../utils/runtime';
 
 export const healthRoutes = new Hono();
 
@@ -104,6 +105,7 @@ healthRoutes.get('/deep', verifyServiceKey, async (c) => {
         latency_ms: Date.now() - redisStart
       };
     } catch (error: any) {
+      markRedisUnavailable(error);
       components.redis = {
         status: 'unhealthy',
         error: error.message
@@ -126,6 +128,10 @@ healthRoutes.get('/deep', verifyServiceKey, async (c) => {
       status: 'unknown',
       message: 'Check via polling endpoint'
     },
+    slack_api: {
+      status: 'unknown',
+      message: 'Check via Slack OAuth and events endpoint'
+    },
     line_api: {
       status: 'unknown',
       message: 'Check via webhook endpoint'
@@ -147,7 +153,6 @@ healthRoutes.get('/deep', verifyServiceKey, async (c) => {
     timestamp: new Date().toISOString(),
     components,
     version: '1.0.0',
-    uptime_seconds: Math.floor(process.uptime())
+    uptime_seconds: Math.floor(getUptimeSeconds())
   });
 });
-

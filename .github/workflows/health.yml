@@ -1,9 +1,7 @@
 name: Health Check
 
 on:
-  schedule:
-    - cron: '*/15 * * * *'  # 15分毎
-  workflow_dispatch:  # 手動実行用
+  workflow_dispatch:  # 手動実行限定（本番定期実行はSupabase Cron）
 
 jobs:
   health:
@@ -62,7 +60,6 @@ jobs:
           echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.health.outputs.response_body }}" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-
 
 
 

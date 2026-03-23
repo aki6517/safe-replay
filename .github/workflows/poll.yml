@@ -1,9 +1,7 @@
 name: Poll Messages
 
 on:
-  schedule:
-    - cron: '*/5 * * * *'  # 5分毎
-  workflow_dispatch:  # 手動実行用
+  workflow_dispatch:  # 手動実行限定（本番定期実行はSupabase Cron）
 
 jobs:
   poll:
@@ -85,7 +83,6 @@ jobs:
             echo '${{ steps.chatwork_poll.outputs.response_body }}' | base64 -d
             echo '```'
           } >> $GITHUB_STEP_SUMMARY
-
 
 
 

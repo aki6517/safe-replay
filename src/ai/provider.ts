@@ -14,7 +14,7 @@ export interface MessageContext {
   threadHistory?: string; // スレッド履歴（テキスト形式）
   attachmentsText?: string; // 添付ファイルのテキスト抽出結果
   senderName?: string;
-  sourceType?: 'gmail' | 'chatwork' | 'line_forward';
+  sourceType?: 'gmail' | 'chatwork' | 'line_forward' | 'slack';
 }
 
 /**
@@ -70,5 +70,4 @@ export interface AIProviderConfig {
   retryAttempts?: number;
   retryDelayMs?: number;
 }
-
 

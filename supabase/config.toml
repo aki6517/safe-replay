@@ -1,0 +1,4 @@
+project_id = "your-project-ref"
+
+[functions.safereply]
+verify_jwt = false

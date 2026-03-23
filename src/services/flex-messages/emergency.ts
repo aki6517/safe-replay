@@ -6,7 +6,7 @@
  * - システム停止検知時
  * - その他の緊急事態
  */
-import type { FlexMessage, FlexBubble, FlexBox, FlexText, FlexButton } from '@line/bot-sdk';
+import type { FlexMessage, FlexBubble, FlexBox, FlexText, FlexButton } from '../../types/line-messaging';
 
 export interface EmergencyFlexMessageData {
   title: string;
@@ -170,4 +170,3 @@ export function createEmergencyFlexMessage(data: EmergencyFlexMessageData): Flex
     contents: bubble
   };
 }
-
