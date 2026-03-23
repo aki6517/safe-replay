@@ -9,6 +9,7 @@ import { isUserAllowedSync } from '../utils/security';
 import { getEditMode } from '../services/edit-mode';
 import { getSupabase, isSupabaseAvailable } from '../db/client';
 import { addVip, removeVip, listVips } from '../services/vip-list';
+import { saveTemplate, listTemplates, deleteTemplate } from '../services/templates';
 import type {
   LineWebhookRequest,
   LineWebhookEvent,
@@ -141,7 +142,80 @@ lineWebhook.post('/webhook', async (c) => {
           const replyToken = messageEvent.replyToken;
 
           // VIPコマンド処理（編集モードより優先）
-          if (text.startsWith('VIP追加') || text.startsWith('VIP削除') || text === 'VIP一覧') {
+          if (text.startsWith('テンプレ保存 ') || text === 'テンプレ一覧' || text.startsWith('テンプレ削除 ')) {
+            try {
+              // ユーザーのDB UUIDを取得
+              let dbUserId: string | null = null;
+              if (isSupabaseAvailable()) {
+                const supabase = getSupabase();
+                const { data: userRecord } = await (supabase.from('users') as any)
+                  .select('id')
+                  .eq('line_user_id', userId)
+                  .single();
+                dbUserId = userRecord?.id || null;
+              }
+
+              if (!dbUserId) {
+                if (replyToken) {
+                  await replyTextMessage(replyToken, 'ユーザー情報が見つかりませんでした。');
+                }
+              } else if (text.startsWith('テンプレ保存 ')) {
+                const rest = text.slice('テンプレ保存 '.length);
+                const spaceIdx = rest.indexOf(' ');
+                if (spaceIdx === -1) {
+                  if (replyToken) {
+                    await replyTextMessage(replyToken, '使い方: テンプレ保存 名前 内容\n例: テンプレ保存 挨拶 お世話になっております。');
+                  }
+                } else {
+                  const name = rest.slice(0, spaceIdx);
+                  const content = rest.slice(spaceIdx + 1);
+                  const result = await saveTemplate(dbUserId, name, content);
+                  if (replyToken) {
+                    await replyTextMessage(
+                      replyToken,
+                      result.success
+                        ? `テンプレート「${name}」を保存しました。`
+                        : `テンプレートの保存に失敗しました: ${result.error || '不明なエラー'}`
+                    );
+                  }
+                }
+              } else if (text === 'テンプレ一覧') {
+                const templates = await listTemplates(dbUserId);
+                let message: string;
+                if (templates.length === 0) {
+                  message = 'テンプレートはまだありません。\n\n「テンプレ保存 名前 内容」で登録できます。';
+                } else {
+                  const lines = templates.map((t, i) => `${i + 1}. ${t.name}`);
+                  message = `テンプレート一覧（${templates.length}件）:\n${lines.join('\n')}`;
+                }
+                if (replyToken) {
+                  await replyTextMessage(replyToken, message);
+                }
+              } else if (text.startsWith('テンプレ削除 ')) {
+                const name = text.slice('テンプレ削除 '.length).trim();
+                if (!name) {
+                  if (replyToken) {
+                    await replyTextMessage(replyToken, '使い方: テンプレ削除 名前\n例: テンプレ削除 挨拶');
+                  }
+                } else {
+                  const ok = await deleteTemplate(dbUserId, name);
+                  if (replyToken) {
+                    await replyTextMessage(
+                      replyToken,
+                      ok
+                        ? `テンプレート「${name}」を削除しました。`
+                        : `テンプレート「${name}」の削除に失敗しました。`
+                    );
+                  }
+                }
+              }
+            } catch (templateError: any) {
+              console.error('[テンプレートコマンド] エラー:', templateError.message);
+              if (messageEvent.replyToken) {
+                await replyTextMessage(messageEvent.replyToken, 'テンプレートコマンドの処理中にエラーが発生しました。');
+              }
+            }
+          } else if (text.startsWith('VIP追加') || text.startsWith('VIP削除') || text === 'VIP一覧') {
             try {
               // ユーザーのDB UUIDを取得
               let dbUserId: string | null = null;
