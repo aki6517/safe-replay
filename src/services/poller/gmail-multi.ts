@@ -3,7 +3,7 @@
  * DBに登録された全アクティブユーザーのGmailを監視
  */
 import { getSupabase, isSupabaseAvailable } from '../../db/client';
-import { redis, isRedisAvailable } from '../../db/redis';
+import { redis, isRedisAvailable, markRedisUnavailable } from '../../db/redis';
 import { 
   createGmailClientForUser, 
   getUnreadMessagesForUser,
@@ -68,6 +68,7 @@ async function getProcessedMessageIds(userId: string): Promise<Set<string>> {
     return new Set(ids as string[]);
   } catch (error) {
     console.error('Failed to get processed message IDs from Redis:', error);
+    markRedisUnavailable(error);
     return new Set();
   }
 }
@@ -87,6 +88,7 @@ async function markMessageAsProcessed(userId: string, messageId: string): Promis
     await redis.expire(key, 30 * 24 * 60 * 60);
   } catch (error) {
     console.error('Failed to mark message as processed in Redis:', error);
+    markRedisUnavailable(error);
   }
 }
 
@@ -206,6 +208,17 @@ async function pollGmailForUser(
                   details: triageResult.details
                 } as Record<string, unknown>
               }).eq('id', messageId);
+
+              // VIPチェック: VIP送信者はType Aに強制
+              if (headers.from) {
+                const { isVip } = await import('../vip-list');
+                if (await isVip(credentials.userId, headers.from)) {
+                  console.log(`[VIPリスト] VIP送信者のためType Aに強制: ${headers.from}`);
+                  triageResult.type = 'A';
+                  triageResult.reason = 'VIP sender - forced Type A';
+                  triageResult.priority_score = 100;
+                }
+              }
 
               // ドラフト生成（Type A, B）
               let draft: string | undefined;
@@ -385,4 +398,3 @@ export async function pollGmailMultiUser(
     processingTimeMs: Date.now() - startTime
   };
 }
-

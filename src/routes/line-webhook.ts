@@ -8,6 +8,7 @@ import { handleLineAction, handleEditModeMessage } from '../services/action-hand
 import { isUserAllowedSync } from '../utils/security';
 import { getEditMode } from '../services/edit-mode';
 import { getSupabase, isSupabaseAvailable } from '../db/client';
+import { addVip, removeVip, listVips } from '../services/vip-list';
 import type {
   LineWebhookRequest,
   LineWebhookEvent,
@@ -137,15 +138,92 @@ lineWebhook.post('/webhook', async (c) => {
 
         if (messageType === 'text' && messageEvent.message.text) {
           const text = messageEvent.message.text;
-          
-          // 編集モード中かチェック
-          const editModeData = await getEditMode(userId);
-          if (editModeData) {
-            // 編集モード中：修正指示として処理
-            await handleEditModeMessage(userId, text, editModeData);
+          const replyToken = messageEvent.replyToken;
+
+          // VIPコマンド処理（編集モードより優先）
+          if (text.startsWith('VIP追加') || text.startsWith('VIP削除') || text === 'VIP一覧') {
+            try {
+              // ユーザーのDB UUIDを取得
+              let dbUserId: string | null = null;
+              if (isSupabaseAvailable()) {
+                const supabase = getSupabase();
+                const { data: userRecord } = await (supabase.from('users') as any)
+                  .select('id')
+                  .eq('line_user_id', userId)
+                  .single();
+                dbUserId = userRecord?.id || null;
+              }
+
+              if (!dbUserId) {
+                if (replyToken) {
+                  await replyTextMessage(replyToken, 'ユーザー情報が見つかりませんでした。');
+                }
+              } else if (text.startsWith('VIP追加 ')) {
+                const senderIdentifier = text.slice('VIP追加 '.length).trim();
+                if (!senderIdentifier) {
+                  if (replyToken) {
+                    await replyTextMessage(replyToken, '使い方: VIP追加 メールアドレス\n例: VIP追加 boss@example.com');
+                  }
+                } else {
+                  const ok = await addVip(dbUserId, senderIdentifier);
+                  if (replyToken) {
+                    await replyTextMessage(
+                      replyToken,
+                      ok
+                        ? `VIPに追加しました: ${senderIdentifier}\nこの送信者からのメールは常に最優先（要返信）で通知されます。`
+                        : `VIPへの追加に失敗しました: ${senderIdentifier}`
+                    );
+                  }
+                }
+              } else if (text.startsWith('VIP削除 ')) {
+                const senderIdentifier = text.slice('VIP削除 '.length).trim();
+                if (!senderIdentifier) {
+                  if (replyToken) {
+                    await replyTextMessage(replyToken, '使い方: VIP削除 メールアドレス\n例: VIP削除 boss@example.com');
+                  }
+                } else {
+                  const ok = await removeVip(dbUserId, senderIdentifier);
+                  if (replyToken) {
+                    await replyTextMessage(
+                      replyToken,
+                      ok
+                        ? `VIPから削除しました: ${senderIdentifier}`
+                        : `VIPからの削除に失敗しました: ${senderIdentifier}`
+                    );
+                  }
+                }
+              } else if (text === 'VIP一覧') {
+                const vips = await listVips(dbUserId);
+                let message: string;
+                if (vips.length === 0) {
+                  message = 'VIPリストは空です。\n\n「VIP追加 メールアドレス」で登録できます。';
+                } else {
+                  const lines = vips.map((v, i) => {
+                    const label = v.label ? ` (${v.label})` : '';
+                    return `${i + 1}. ${v.sender_identifier}${label}`;
+                  });
+                  message = `VIPリスト（${vips.length}件）:\n${lines.join('\n')}`;
+                }
+                if (replyToken) {
+                  await replyTextMessage(replyToken, message);
+                }
+              }
+            } catch (vipError: any) {
+              console.error('[VIPコマンド] エラー:', vipError.message);
+              if (messageEvent.replyToken) {
+                await replyTextMessage(messageEvent.replyToken, 'VIPコマンドの処理中にエラーが発生しました。');
+              }
+            }
           } else {
-            // 通常モード：転送メッセージ処理
-            await processForwardedMessage(userId, text);
+            // 編集モード中かチェック
+            const editModeData = await getEditMode(userId);
+            if (editModeData) {
+              // 編集モード中：修正指示として処理
+              await handleEditModeMessage(userId, text, editModeData);
+            } else {
+              // 通常モード：転送メッセージ処理
+              await processForwardedMessage(userId, text);
+            }
           }
         } else if (messageType === 'file') {
           // ファイル受信処理（将来実装）
