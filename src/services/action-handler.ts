@@ -4,11 +4,16 @@
 import { getSupabase, isSupabaseAvailable } from '../db/client';
 import { sendGmailMessage } from './gmail';
 import { sendChatworkMessage } from './chatwork';
+import { sendSlackMessage } from './slack';
 import { sendTextMessage, sendFlexMessage } from './line';
 import { addToBlocklist, getBlocklist } from './blocklist';
 import { getOpenAIProvider } from '../ai/openai';
 import type { MessageContext } from '../ai/provider';
 import { startEditMode, endEditMode } from './edit-mode';
+import { snoozeMessage } from './snooze';
+
+const LINE_TEXT_CHUNK_SIZE = 4200;
+const LINE_SEND_INTERVAL_MS = 500;
 
 /**
  * メッセージ情報を取得
@@ -34,6 +39,36 @@ async function getMessage(messageId: string): Promise<any | null> {
     return data;
   } catch (error: any) {
     console.error('[メッセージ取得エラー]', { messageId, error: error.message });
+    return null;
+  }
+}
+
+async function getSlackInstallation(installationId: string, lineUserId: string): Promise<any | null> {
+  const supabase = getSupabase();
+  if (!supabase || !isSupabaseAvailable()) {
+    return null;
+  }
+
+  try {
+    const { data, error } = await (supabase.from('slack_installations') as any)
+      .select('*')
+      .eq('id', installationId)
+      .eq('line_user_id', lineUserId)
+      .eq('is_active', true)
+      .single();
+
+    if (error || !data) {
+      console.error('[Slack installation lookup failed]', { installationId, lineUserId, error });
+      return null;
+    }
+
+    return data;
+  } catch (error: any) {
+    console.error('[Slack installation lookup error]', {
+      installationId,
+      lineUserId,
+      error: error.message
+    });
     return null;
   }
 }
@@ -73,6 +108,28 @@ async function updateMessageStatus(
   }
 }
 
+function splitTextByLength(text: string, chunkSize: number): string[] {
+  const chunks: string[] = [];
+  for (let i = 0; i < text.length; i += chunkSize) {
+    chunks.push(text.substring(i, i + chunkSize));
+  }
+  return chunks;
+}
+
+async function sendChunkedTextMessage(userId: string, text: string): Promise<void> {
+  const chunks = splitTextByLength(text, LINE_TEXT_CHUNK_SIZE);
+  for (let i = 0; i < chunks.length; i += 1) {
+    const chunk = `${chunks[i]}${i < chunks.length - 1 ? '\n\n（続く）' : ''}`;
+    const ok = await sendTextMessage(userId, chunk);
+    if (!ok) {
+      throw new Error('Failed to send LINE text message');
+    }
+    if (i < chunks.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, LINE_SEND_INTERVAL_MS));
+    }
+  }
+}
+
 /**
  * LINEアクションを処理
  */
@@ -105,6 +162,9 @@ export async function handleLineAction(
     if (action === 'send') {
       // 送信処理
       await handleSendAction(userId, message);
+    } else if (action === 'view_received' || action === 'view_original') {
+      // 受信文確認処理
+      await handleViewReceivedAction(userId, message);
     } else if (action === 'view_draft' || action === 'view_reply') {
       // 返信文確認処理
       await handleViewDraftAction(userId, message);
@@ -127,6 +187,11 @@ export async function handleLineAction(
     } else if (action === 'acknowledge' || action === 'ack') {
       // 確認メール送信処理
       await handleAcknowledgeAction(userId, message);
+    } else if (action === 'snooze') {
+      // スヌーズ処理
+      const durationParam = params.get('duration');
+      const durationMinutes = durationParam ? parseInt(durationParam, 10) : 120;
+      await handleSnoozeAction(userId, message, durationMinutes);
     } else if (action === 'block') {
       // ブロック処理
       await handleBlockAction(userId, message);
@@ -185,6 +250,24 @@ async function handleSendAction(userId: string, message: any): Promise<void> {
       }
 
       success = await sendChatworkMessage(roomId, draft);
+    } else if (sourceType === 'slack') {
+      const installationId = message.metadata?.installation_id;
+      const channelId = message.metadata?.channel_id;
+      const threadTs = message.metadata?.thread_ts || message.metadata?.slack_ts;
+
+      if (!installationId || !channelId) {
+        await sendTextMessage(userId, 'エラー: Slack送信先情報が取得できませんでした。');
+        return;
+      }
+
+      const installation = await getSlackInstallation(installationId, userId);
+      if (!installation?.user_access_token) {
+        await sendTextMessage(userId, 'エラー: Slack連携情報が見つかりませんでした。再連携してください。');
+        return;
+      }
+
+      await sendSlackMessage(installation.user_access_token, channelId, draft, threadTs || undefined);
+      success = true;
     } else if (sourceType === 'line_forward') {
       // LINE転送の場合は送信できない
       await sendTextMessage(userId, 'LINE転送メッセージは送信できません。元のチャネルで返信してください。');
@@ -225,32 +308,53 @@ async function handleViewDraftAction(userId: string, message: any): Promise<void
     const subject = message.subject || '（件名なし）';
     const sender = message.sender_identifier || message.sender_name || '送信者不明';
     
-    // 返信文を表示（長い場合は分割）
-    const maxLength = 5000; // LINEのメッセージ上限
-    
-    if (draft.length <= maxLength) {
-      await sendTextMessage(userId, `📝 返信文（全文）\n\n【件名】\nRe: ${subject}\n\n【送信先】\n${sender}\n\n【返信文】\n${draft}`);
-    } else {
-      // 長い場合は分割して送信
-      const chunks = [];
-      for (let i = 0; i < draft.length; i += maxLength) {
-        chunks.push(draft.substring(i, i + maxLength));
-      }
-      
-      await sendTextMessage(userId, `📝 返信文（全文）\n\n【件名】\nRe: ${subject}\n\n【送信先】\n${sender}\n\n【返信文】`);
-      for (let i = 0; i < chunks.length; i++) {
-        await sendTextMessage(userId, `${chunks[i]}${i < chunks.length - 1 ? '\n\n（続く）' : ''}`);
-        // レート制限を避けるため少し待機
-        if (i < chunks.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-      }
-    }
+    const text =
+      `📝 返信文（全文）\n\n` +
+      `【件名】\nRe: ${subject}\n\n` +
+      `【送信先】\n${sender}\n\n` +
+      `【返信文】\n${draft}`;
+    await sendChunkedTextMessage(userId, text);
     
     console.log('[返信文確認アクション完了]', { messageId: message.id, draftLength: draft.length });
   } catch (error: any) {
     console.error('[返信文確認アクションエラー]', { userId, messageId: message.id, error: error.message });
     await sendTextMessage(userId, 'エラー: 返信文の取得中にエラーが発生しました。');
+  }
+}
+
+/**
+ * 受信文確認アクションを処理
+ */
+async function handleViewReceivedAction(userId: string, message: any): Promise<void> {
+  try {
+    const originalBody =
+      (typeof message.body_plain === 'string' && message.body_plain.trim()) ||
+      (typeof message.extracted_content === 'string' && message.extracted_content.trim()) ||
+      (typeof message.body === 'string' && message.body.trim()) ||
+      '';
+
+    if (!originalBody) {
+      await sendTextMessage(userId, '❌ 受信文が見つかりませんでした。');
+      return;
+    }
+
+    const subject = message.subject || '（件名なし）';
+    const sender = message.sender_identifier || message.sender_name || '送信者不明';
+    const sourceType = message.source_type || 'unknown';
+
+    const header =
+      `📩 受信文（全文）\n\n` +
+      `【送信元】\n${sender}\n\n` +
+      `【チャネル】\n${sourceType}\n\n` +
+      `【件名】\n${subject}\n\n` +
+      `【本文】\n`;
+
+    await sendChunkedTextMessage(userId, `${header}${originalBody}`);
+
+    console.log('[受信文確認アクション完了]', { messageId: message.id, bodyLength: originalBody.length });
+  } catch (error: any) {
+    console.error('[受信文確認アクションエラー]', { userId, messageId: message.id, error: error.message });
+    await sendTextMessage(userId, 'エラー: 受信文の取得中にエラーが発生しました。');
   }
 }
 
@@ -434,16 +538,15 @@ async function handleEditRegenerateAction(
         .eq('id', message.id);
     }
 
-    // 再生成した返信文を表示
+    // 再生成した返信文を表示（長文は分割）
     const subject = message.subject || '（件名なし）';
     const sender = message.sender_identifier || message.sender_name || '送信者不明';
-    
-    await sendTextMessage(userId, 
+    const regeneratedText =
       `✅ ${toneLabels[tone]}トーンで再生成しました！\n\n` +
       `【件名】\nRe: ${subject}\n\n` +
       `【送信先】\n${sender}\n\n` +
-      `【新しい返信文】\n${newDraft}`
-    );
+      `【新しい返信文】\n${newDraft}`;
+    await sendChunkedTextMessage(userId, regeneratedText);
 
     // 送信ボタン付きのFlexメッセージを送信
     const confirmFlexContents = createRegenerateConfirmFlexMessage(message.id);
@@ -537,36 +640,55 @@ function createRegenerateConfirmFlexMessage(messageId: string): any {
     },
     footer: {
       type: 'box',
-      layout: 'horizontal',
+      layout: 'vertical',
       contents: [
         {
           type: 'button',
           action: {
             type: 'postback',
+            label: '📝 返信文確認',
+            data: `action=view_draft&message_id=${messageId}`,
+            displayText: '返信文を確認します'
+          },
+          style: 'secondary',
+          height: 'sm'
+        },
+        {
+          type: 'box',
+          layout: 'horizontal',
+          contents: [
+            {
+              type: 'button',
+              action: {
+                type: 'postback',
             label: '✉️ 送信',
             data: `action=send&message_id=${messageId}`,
             displayText: 'この返信文を送信'
-          },
-          style: 'primary',
-          height: 'sm',
-          color: '#4A90A4',
-          flex: 1
-        },
-        {
-          type: 'button',
-          action: {
-            type: 'postback',
-            label: '✏️ 再修正',
-            data: `action=edit&message_id=${messageId}`,
-            displayText: '別のトーンで再生成'
-          },
-          style: 'secondary',
-          height: 'sm',
-          flex: 1,
+              },
+              style: 'primary',
+              height: 'sm',
+              color: '#4A90A4',
+              flex: 1
+            },
+            {
+              type: 'button',
+              action: {
+                type: 'postback',
+                label: '✏️ 再修正',
+                data: `action=edit&message_id=${messageId}`,
+                displayText: '別のトーンで再生成'
+              },
+              style: 'secondary',
+              height: 'sm',
+              flex: 1,
+              margin: 'sm'
+            }
+          ],
           margin: 'sm'
         }
       ],
-      paddingAll: 'lg'
+      paddingAll: 'lg',
+      spacing: 'sm'
     }
   };
 }
@@ -796,16 +918,15 @@ export async function handleEditModeMessage(
     // 編集モードを終了
     await endEditMode(userId);
 
-    // 修正後の返信文を表示
+    // 修正後の返信文を表示（長文は分割）
     const subject = message.subject || '（件名なし）';
     const sender = message.sender_identifier || message.sender_name || '送信者不明';
-    
-    await sendTextMessage(userId, 
+    const editedText =
       `✅ 修正を適用しました！\n\n` +
       `【件名】\nRe: ${subject}\n\n` +
       `【送信先】\n${sender}\n\n` +
-      `【修正後の返信文】\n${modifiedDraft}`
-    );
+      `【修正後の返信文】\n${modifiedDraft}`;
+    await sendChunkedTextMessage(userId, editedText);
 
     // 送信ボタン付きのFlexメッセージを送信
     const confirmFlexContents = createRegenerateConfirmFlexMessage(editModeData.messageId);
@@ -888,5 +1009,29 @@ ${instruction}
   } catch (error: any) {
     console.error('[カスタム編集エラー]', error.message);
     return null;
+  }
+}
+
+/**
+ * スヌーズアクションを処理
+ */
+async function handleSnoozeAction(userId: string, message: any, durationMinutes: number): Promise<void> {
+  try {
+    const success = await snoozeMessage(message.id, durationMinutes);
+
+    if (success) {
+      const hours = Math.floor(durationMinutes / 60);
+      const minutes = durationMinutes % 60;
+      const durationLabel = hours > 0
+        ? (minutes > 0 ? `${hours}時間${minutes}分` : `${hours}時間`)
+        : `${minutes}分`;
+      await sendTextMessage(userId, `⏰ ${durationLabel}後にリマインドします`);
+      console.log('[スヌーズアクション完了]', { messageId: message.id, durationMinutes });
+    } else {
+      await sendTextMessage(userId, '❌ スヌーズの設定に失敗しました。');
+    }
+  } catch (error: any) {
+    console.error('[スヌーズアクションエラー]', { userId, messageId: message.id, error: error.message });
+    await sendTextMessage(userId, 'エラー: スヌーズ処理中にエラーが発生しました。');
   }
 }

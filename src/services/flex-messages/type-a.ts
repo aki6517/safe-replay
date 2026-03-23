@@ -5,7 +5,14 @@
  * - 返信案プレビューを表示
  * - [送信][修正][断る]ボタンを提供
  */
-import type { FlexMessage, FlexBubble, FlexBox, FlexText, FlexSeparator, FlexButton } from '@line/bot-sdk';
+import type {
+  FlexMessage,
+  FlexBubble,
+  FlexBox,
+  FlexText,
+  FlexSeparator,
+  FlexButton
+} from '../../types/line-messaging';
 
 export interface TypeAFlexMessageData {
   messageId: string;
@@ -147,12 +154,26 @@ export function createTypeAFlexMessage(data: TypeAFlexMessageData): FlexMessage 
   );
 
   // フッターコンテンツ
-  // ボタン配置: 左上=返信文確認、右上=返信文修正、左下=返信、右下=ブロック
+  // ボタン配置:
+  // 1段目: 受信文確認 / 返信文確認
+  // 2段目: 返信文修正 / 返信
+  // 3段目: ブロック
   const footerContents: (FlexBox | FlexButton)[] = [
     {
       type: 'box',
       layout: 'horizontal',
       contents: [
+        {
+          type: 'button',
+          action: {
+            type: 'postback',
+            label: '受信文確認',
+            data: `action=view_received&message_id=${messageId}`,
+            displayText: '受信文を確認します'
+          },
+          style: 'secondary',
+          color: '#607D8B'
+        } as FlexButton,
         {
           type: 'button',
           action: {
@@ -163,17 +184,6 @@ export function createTypeAFlexMessage(data: TypeAFlexMessageData): FlexMessage 
           },
           style: 'secondary',
           color: '#2196F3'
-        } as FlexButton,
-        {
-          type: 'button',
-          action: {
-            type: 'postback',
-            label: '返信文修正',
-            data: `action=edit&message_id=${messageId}`,
-            displayText: '返信を修正します'
-          },
-          style: 'secondary',
-          color: '#888888'
         } as FlexButton
       ],
       spacing: 'sm'
@@ -186,6 +196,17 @@ export function createTypeAFlexMessage(data: TypeAFlexMessageData): FlexMessage 
           type: 'button',
           action: {
             type: 'postback',
+            label: '返信文修正',
+            data: `action=edit&message_id=${messageId}`,
+            displayText: '返信を修正します'
+          },
+          style: 'secondary',
+          color: '#888888'
+        } as FlexButton,
+        {
+          type: 'button',
+          action: {
+            type: 'postback',
             label: '返信',
             data: `action=send&message_id=${messageId}`,
             displayText: '返信を送信します'
@@ -193,19 +214,32 @@ export function createTypeAFlexMessage(data: TypeAFlexMessageData): FlexMessage 
           style: 'primary',
           color: '#0066CC'
         } as FlexButton,
-        {
-          type: 'button',
-          action: {
-            type: 'postback',
-            label: '🚫ブロック',
-            data: `action=block&message_id=${messageId}`,
-            displayText: 'この送信者をブロックします'
-          },
-          style: 'secondary',
-          color: '#888888'
-        } as FlexButton
       ],
       spacing: 'sm',
+      margin: 'sm'
+    },
+    {
+      type: 'button',
+      action: {
+        type: 'postback',
+        label: '⏰後で対応',
+        data: `action=snooze&message_id=${messageId}&duration=120`,
+        displayText: '2時間後にリマインドします'
+      },
+      style: 'secondary',
+      color: '#888888',
+      margin: 'sm'
+    },
+    {
+      type: 'button',
+      action: {
+        type: 'postback',
+        label: '🚫ブロック',
+        data: `action=block&message_id=${messageId}`,
+        displayText: 'この送信者をブロックします'
+      },
+      style: 'secondary',
+      color: '#888888',
       margin: 'sm'
     }
   ];
@@ -239,4 +273,3 @@ export function createTypeAFlexMessage(data: TypeAFlexMessageData): FlexMessage 
     contents: bubble
   };
 }
-

@@ -5,7 +5,14 @@
  * - [既読][確認メール]ボタンを提供
  * - 静音通知設定に対応
  */
-import type { FlexMessage, FlexBubble, FlexBox, FlexText, FlexSeparator, FlexButton } from '@line/bot-sdk';
+import type {
+  FlexMessage,
+  FlexBubble,
+  FlexBox,
+  FlexText,
+  FlexSeparator,
+  FlexButton
+} from '../../types/line-messaging';
 
 
 export interface TypeBFlexMessageData {
@@ -15,6 +22,8 @@ export interface TypeBFlexMessageData {
   sender: string;
   source: string;
   draft?: string; // 返信案（オプション）
+  variant?: 'type-b' | 'type-c';
+  supportsAcknowledge?: boolean;
 }
 
 /**
@@ -24,26 +33,43 @@ export interface TypeBFlexMessageData {
  * @returns Flex Messageオブジェクト
  */
 export function createTypeBFlexMessage(data: TypeBFlexMessageData): FlexMessage {
-  const { messageId, subject, body, sender, source, draft } = data;
+  const {
+    messageId,
+    subject,
+    body,
+    sender,
+    source,
+    draft,
+    variant = 'type-b',
+    supportsAcknowledge = false
+  } = data;
 
   // 本文を300文字に制限
   const bodyPreview = body.length > 300 ? `${body.substring(0, 300)}...` : body;
   
   // 返信案を200文字に制限（プレビュー用）
   const draftPreview = draft ? (draft.length > 200 ? `${draft.substring(0, 200)}...` : draft) : null;
+  const headerTitle = variant === 'type-c' ? '【参考通知】' : '【メッセージ受信】';
+  const headerSubtitle = variant === 'type-c'
+    ? '返信不要メッセージが届きました'
+    : '共有・CCメッセージが届きました';
+  const headerColor = variant === 'type-c' ? '#607D8B' : '#4CAF50';
+  const altText = variant === 'type-c'
+    ? '【参考通知】返信不要メッセージが届きました'
+    : '【メッセージ受信】共有・CCメッセージが届きました';
 
   // ヘッダーコンテンツ
   const headerContents: FlexText[] = [
     {
       type: 'text',
-      text: '【メッセージ受信】',
+      text: headerTitle,
       weight: 'bold',
       size: 'xl',
       color: '#FFFFFF'
     },
     {
       type: 'text',
-      text: '共有・CCメッセージが届きました',
+      text: headerSubtitle,
       size: 'sm',
       color: '#FFFFFF',
       margin: 'md'
@@ -152,8 +178,13 @@ export function createTypeBFlexMessage(data: TypeBFlexMessageData): FlexMessage 
   }
 
   // フッターコンテンツ（ボタン）
-  // 返信案がある場合: 左上=返信文確認、右上=返信文修正、左下=返信、右下=ブロック
-  // 返信案がない場合: 左上=既読、右上=確認メール、左下=空、右下=ブロック
+  // 返信案がある場合:
+  // 1段目: 受信文確認 / 返信文確認
+  // 2段目: 返信文修正 / 返信
+  // 3段目: ブロック
+  // 返信案がない場合:
+  // Gmail: 既読 / 確認メール
+  // その他: 受信文確認 / 既読
   const footerContents: (FlexBox | FlexButton)[] = [];
   
   if (draftPreview) {
@@ -167,23 +198,23 @@ export function createTypeBFlexMessage(data: TypeBFlexMessageData): FlexMessage 
             type: 'button',
             action: {
               type: 'postback',
+              label: '受信文確認',
+              data: `action=view_received&message_id=${messageId}`,
+              displayText: '受信文を確認します'
+            },
+            style: 'secondary',
+            color: '#607D8B'
+          } as FlexButton,
+          {
+            type: 'button',
+            action: {
+              type: 'postback',
               label: '返信文確認',
               data: `action=view_draft&message_id=${messageId}`,
               displayText: '返信文を確認します'
             },
             style: 'secondary',
             color: '#2196F3'
-          } as FlexButton,
-          {
-            type: 'button',
-            action: {
-              type: 'postback',
-              label: '返信文修正',
-              data: `action=edit&message_id=${messageId}`,
-              displayText: '返信を修正します'
-            },
-            style: 'secondary',
-            color: '#888888'
           } as FlexButton
         ],
         spacing: 'sm'
@@ -196,26 +227,50 @@ export function createTypeBFlexMessage(data: TypeBFlexMessageData): FlexMessage 
             type: 'button',
             action: {
               type: 'postback',
+              label: '返信文修正',
+              data: `action=edit&message_id=${messageId}`,
+              displayText: '返信を修正します'
+            },
+            style: 'secondary',
+            color: '#888888'
+          } as FlexButton,
+          {
+            type: 'button',
+            action: {
+              type: 'postback',
               label: '返信',
               data: `action=send&message_id=${messageId}`,
               displayText: '返信を送信します'
             },
             style: 'primary',
             color: '#0066CC'
-          } as FlexButton,
-          {
-            type: 'button',
-            action: {
-              type: 'postback',
-              label: '🚫ブロック',
-              data: `action=block&message_id=${messageId}`,
-              displayText: 'この送信者をブロックします'
-            },
-            style: 'secondary',
-            color: '#888888'
           } as FlexButton
         ],
         spacing: 'sm',
+        margin: 'sm'
+      },
+      {
+        type: 'button',
+        action: {
+          type: 'postback',
+          label: '⏰後で対応',
+          data: `action=snooze&message_id=${messageId}&duration=120`,
+          displayText: '2時間後にリマインドします'
+        },
+        style: 'secondary',
+        color: '#888888',
+        margin: 'sm'
+      },
+      {
+        type: 'button',
+        action: {
+          type: 'postback',
+          label: '🚫ブロック',
+          data: `action=block&message_id=${messageId}`,
+          displayText: 'この送信者をブロックします'
+        },
+        style: 'secondary',
+        color: '#888888',
         margin: 'sm'
       }
     );
@@ -229,39 +284,61 @@ export function createTypeBFlexMessage(data: TypeBFlexMessageData): FlexMessage 
           type: 'button',
           action: {
             type: 'postback',
-            label: '既読',
-            data: `action=read&message_id=${messageId}`,
-            displayText: '既読にしました'
+            label: supportsAcknowledge ? '既読' : '受信文確認',
+            data: supportsAcknowledge
+              ? `action=read&message_id=${messageId}`
+              : `action=view_received&message_id=${messageId}`,
+            displayText: supportsAcknowledge
+              ? '既読にしました'
+              : '受信文を確認します'
           },
-          style: 'primary',
-          color: '#4CAF50'
+          style: 'secondary',
+          color: '#607D8B'
         } as FlexButton,
         {
           type: 'button',
           action: {
             type: 'postback',
-            label: '確認メール',
-            data: `action=acknowledge&message_id=${messageId}`,
-            displayText: '確認メールを送信します'
+            label: supportsAcknowledge ? '確認メール' : '既読',
+            data: supportsAcknowledge
+              ? `action=acknowledge&message_id=${messageId}`
+              : `action=read&message_id=${messageId}`,
+            displayText: supportsAcknowledge
+              ? '確認メールを送信します'
+              : '既読にしました'
           },
-          style: 'secondary',
-          color: '#2196F3'
+          style: supportsAcknowledge ? 'secondary' : 'primary',
+          color: supportsAcknowledge ? '#2196F3' : '#4CAF50'
         } as FlexButton
       ],
       spacing: 'sm'
     });
-    footerContents.push({
-      type: 'button',
-      action: {
-        type: 'postback',
-        label: '🚫ブロック',
-        data: `action=block&message_id=${messageId}`,
-        displayText: 'この送信者をブロックします'
+    footerContents.push(
+      {
+        type: 'button',
+        action: {
+          type: 'postback',
+          label: '⏰後で対応',
+          data: `action=snooze&message_id=${messageId}&duration=120`,
+          displayText: '2時間後にリマインドします'
+        },
+        style: 'secondary',
+        color: '#888888',
+        margin: 'sm'
       },
-      style: 'secondary',
-      color: '#888888',
-      margin: 'sm'
-    });
+      {
+        type: 'button',
+        action: {
+          type: 'postback',
+          label: '🚫ブロック',
+          data: `action=block&message_id=${messageId}`,
+          displayText: 'この送信者をブロックします'
+        },
+        style: 'secondary',
+        color: '#888888',
+        margin: 'sm'
+      }
+    );
   }
 
   const bubble: FlexBubble = {
@@ -270,7 +347,7 @@ export function createTypeBFlexMessage(data: TypeBFlexMessageData): FlexMessage 
       type: 'box',
       layout: 'vertical',
       contents: headerContents,
-      backgroundColor: '#4CAF50', // 緑色（Type Aの赤とは異なる）
+      backgroundColor: headerColor,
       paddingAll: 'lg'
     },
     body: {
@@ -289,7 +366,7 @@ export function createTypeBFlexMessage(data: TypeBFlexMessageData): FlexMessage 
 
   return {
     type: 'flex',
-    altText: '【メッセージ受信】共有・CCメッセージが届きました',
+    altText,
     contents: bubble
   };
 }
