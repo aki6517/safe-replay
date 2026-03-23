@@ -10,7 +10,7 @@
     "type-check": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
-    "get-gmail-refresh-token": "tsx scripts/get-gmail-refresh-token.ts",
+    "get-gmail-refresh-token": "node --import tsx scripts/get-gmail-refresh-token.ts",
     "test-gmail-api": "tsx scripts/test-gmail-api.ts",
     "test-chatwork-api": "tsx scripts/test-chatwork-api.ts",
     "test-ai-processing": "tsx scripts/test-ai-processing.ts",
@@ -25,7 +25,11 @@
     "test-emergency-notification": "tsx scripts/test-emergency-notification.ts",
     "create-test-files": "tsx scripts/create-test-files.ts",
     "clear-processed-messages": "tsx scripts/clear-processed-messages.ts",
-    "verify-gmail-token": "tsx scripts/verify-gmail-token.ts"
+    "verify-gmail-token": "tsx scripts/verify-gmail-token.ts",
+    "sync:edge-source": "node scripts/sync-edge-source.mjs",
+    "build:liff-web": "node scripts/build-liff-web.mjs",
+    "deploy:liff-web": "npm run build:liff-web && vercel --prod --yes liff-web-dist",
+    "deploy:supabase": "npm run sync:edge-source && supabase functions deploy safereply --no-verify-jwt"
   },
   "keywords": [
     "ai",
@@ -37,7 +41,6 @@
   "license": "MIT",
   "dependencies": {
     "@hono/node-server": "1.8.2",
-    "@line/bot-sdk": "^9.3.0",
     "@supabase/supabase-js": "^2.39.0",
     "@upstash/redis": "^1.25.0",
     "dotenv": "^16.3.1",
@@ -48,6 +51,7 @@
     "openai": "^4.20.1",
     "pdf-parse": "^1.1.1",
     "pptx-parser": "^1.0.0",
+    "stripe": "^20.4.1",
     "xlsx": "^0.18.5",
     "xml2js": "^0.6.2",
     "zod": "^3.22.4"
