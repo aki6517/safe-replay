@@ -10,6 +10,7 @@ import { getEditMode } from '../services/edit-mode';
 import { getSupabase, isSupabaseAvailable } from '../db/client';
 import { addVip, removeVip, listVips } from '../services/vip-list';
 import { saveTemplate, listTemplates, deleteTemplate } from '../services/templates';
+import { deleteAccount } from '../services/account';
 import type {
   LineWebhookRequest,
   LineWebhookEvent,
@@ -286,6 +287,26 @@ lineWebhook.post('/webhook', async (c) => {
               console.error('[VIPコマンド] エラー:', vipError.message);
               if (messageEvent.replyToken) {
                 await replyTextMessage(messageEvent.replyToken, 'VIPコマンドの処理中にエラーが発生しました。');
+              }
+            }
+          } else if (text === 'アカウント削除') {
+            if (replyToken) {
+              await replyTextMessage(
+                replyToken,
+                '本当にアカウントを削除しますか？全てのデータが削除されます。\n\n削除する場合は「削除確認」と送信してください。'
+              );
+            }
+          } else if (text === '削除確認') {
+            try {
+              const result = await deleteAccount(userId);
+              if (!result.success && replyToken) {
+                await replyTextMessage(replyToken, `アカウントの削除に失敗しました: ${result.error || '不明なエラー'}`);
+              }
+              // 成功時のLINE通知はdeleteAccount()内部で送信済み
+            } catch (deleteError: any) {
+              console.error('[アカウント削除] エラー:', deleteError.message);
+              if (replyToken) {
+                await replyTextMessage(replyToken, 'アカウントの削除中にエラーが発生しました。');
               }
             }
           } else {

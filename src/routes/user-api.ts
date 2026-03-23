@@ -6,6 +6,7 @@ import { Hono } from 'hono';
 import { getSupabase, isSupabaseAvailable } from '../db/client';
 import { isSlackOAuthConfigured } from '../services/slack';
 import { getAuthenticatedLineUserId } from '../utils/liff-auth';
+import { deleteAccount } from '../services/account';
 
 export const userApiRouter = new Hono();
 
@@ -187,6 +188,37 @@ userApiRouter.post('/complete', async (c) => {
 
   } catch (error: any) {
     console.error('[セットアップ完了エラー]', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+/**
+ * アカウント削除
+ * POST /api/user/delete-account
+ * （DELETEメソッドがLIFFから使いづらいためPOSTで実装）
+ */
+userApiRouter.post('/delete-account', async (c) => {
+  try {
+    const body = await c.req.json();
+    const lineUserId = await getAuthenticatedLineUserId(
+      c.req.header('Authorization'),
+      body.lineUserId
+    );
+
+    if (!lineUserId) {
+      return c.json({ error: 'Unauthorized' }, 401);
+    }
+
+    const result = await deleteAccount(lineUserId);
+    if (!result.success) {
+      return c.json({ error: result.error }, 500);
+    }
+
+    console.log('[アカウント削除完了]', { lineUserId });
+    return c.json({ success: true });
+
+  } catch (error: any) {
+    console.error('[アカウント削除エラー]', error);
     return c.json({ error: error.message }, 500);
   }
 });
