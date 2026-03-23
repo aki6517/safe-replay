@@ -4,11 +4,13 @@
  */
 import { getSupabase, isSupabaseAvailable } from '../../db/client';
 import { redis, isRedisAvailable, markRedisUnavailable } from '../../db/redis';
-import { 
-  createGmailClientForUser, 
+import {
+  createGmailClientForUser,
   getUnreadMessagesForUser,
   extractMessageBody,
   extractMessageHeaders,
+  type GmailClient,
+  type GmailMessage,
   type GmailUserCredentials
 } from '../gmail';
 import { triageMessage } from '../../ai/triage';
@@ -89,6 +91,53 @@ async function markMessageAsProcessed(userId: string, messageId: string): Promis
   } catch (error) {
     console.error('Failed to mark message as processed in Redis:', error);
     markRedisUnavailable(error);
+  }
+}
+
+/**
+ * ユーザー固有クライアントでスレッド履歴を取得し、文字列に変換する
+ * エラー時は undefined を返す（呼び出し元は履歴なしで続行）
+ */
+async function fetchThreadHistoryAsContext(
+  client: GmailClient,
+  threadId: string,
+  currentMessageId: string
+): Promise<string | undefined> {
+  try {
+    const response = await client.users.threads.get({
+      userId: 'me',
+      id: threadId,
+      format: 'full'
+    });
+
+    const messages: GmailMessage[] = (response.data.messages || []).map((msg) => ({
+      id: msg.id || '',
+      threadId: msg.threadId || '',
+      snippet: msg.snippet || '',
+      payload: msg.payload,
+      internalDate: msg.internalDate,
+      labelIds: msg.labelIds || []
+    }));
+
+    // 現在処理中のメッセージ自身を除いた過去メッセージのみ
+    const historyMessages = messages.filter((m) => m.id !== currentMessageId);
+    if (historyMessages.length === 0) {
+      return undefined;
+    }
+
+    const lines = historyMessages.map((m) => {
+      const body = extractMessageBody(m);
+      const headers = extractMessageHeaders(m);
+      const date = m.internalDate
+        ? new Date(parseInt(m.internalDate)).toISOString()
+        : '';
+      return `[${date}] From: ${headers.from || '不明'}\nSubject: ${headers.subject || '(件名なし)'}\n${body.substring(0, 500)}`;
+    });
+
+    return lines.join('\n\n---\n\n');
+  } catch (error: any) {
+    console.warn(`[fetchThreadHistoryAsContext] スレッド履歴の取得に失敗 (threadId=${threadId}):`, error.message);
+    return undefined;
   }
 }
 
@@ -191,11 +240,28 @@ async function pollGmailForUser(
           const messageId = insertedData?.id;
 
           if (messageId) {
+            // スレッド履歴を取得（thread_idがある場合のみ）
+            let threadContext: string | undefined;
+            if (message.threadId) {
+              threadContext = await fetchThreadHistoryAsContext(
+                gmailClient,
+                message.threadId,
+                message.id
+              );
+              if (threadContext) {
+                console.log('[マルチユーザーPoller] スレッド履歴を取得', {
+                  userId: credentials.userId,
+                  threadId: message.threadId
+                });
+              }
+            }
+
             // AIトリアージを実行
             try {
               const triageResult = await triageMessage(
                 headers.subject || '',
-                body
+                body,
+                threadContext
               );
 
               // トリアージ結果をDBに更新
@@ -227,7 +293,8 @@ async function pollGmailForUser(
                   draft = await generateDraft(
                     headers.subject || '',
                     body,
-                    triageResult.type
+                    triageResult.type,
+                    threadContext
                   );
 
                   if (draft) {
