@@ -113,6 +113,12 @@ lineWebhook.post('/webhook', async (c) => {
       const eventType = event.type;
       const userId = event.source?.userId;
 
+      // リプレイ攻撃防止: 5分以上古いイベントはスキップ
+      if (event.timestamp && Date.now() - event.timestamp > 5 * 60 * 1000) {
+        console.warn(`[セキュリティ] 古いイベントをスキップ: ${Date.now() - event.timestamp}ms ago`);
+        continue;
+      }
+
       if (!userId) {
         continue;
       }
