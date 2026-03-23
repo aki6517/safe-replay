@@ -82,7 +82,8 @@ userApiRouter.post('/status', async (c) => {
       slackWorkspaceCount: slackWorkspaces.length,
       slackWorkspaces,
       slackOauthConfigured: isSlackOAuthConfigured(),
-      status: user?.status
+      status: user?.status,
+      tosAccepted: !!user?.tos_accepted_at
     });
 
   } catch (error: any) {
@@ -188,6 +189,48 @@ userApiRouter.post('/complete', async (c) => {
 
   } catch (error: any) {
     console.error('[セットアップ完了エラー]', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+/**
+ * 利用規約・プライバシーポリシーへの同意を記録
+ * POST /api/user/accept-tos
+ */
+userApiRouter.post('/accept-tos', async (c) => {
+  try {
+    const body = await c.req.json();
+    const lineUserId = await getAuthenticatedLineUserId(
+      c.req.header('Authorization'),
+      body.lineUserId
+    );
+
+    if (!lineUserId) {
+      return c.json({ error: 'lineUserId is required' }, 400);
+    }
+
+    const supabase = getSupabase();
+    if (!supabase || !isSupabaseAvailable()) {
+      return c.json({ error: 'Database not available' }, 503);
+    }
+
+    const { error } = await (supabase.from('users') as any)
+      .update({
+        tos_accepted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('line_user_id', lineUserId);
+
+    if (error) {
+      console.error('[利用規約同意記録エラー]', error);
+      return c.json({ error: 'Failed to record TOS acceptance' }, 500);
+    }
+
+    console.log('[利用規約同意記録完了]', { lineUserId });
+    return c.json({ success: true });
+
+  } catch (error: any) {
+    console.error('[利用規約同意記録エラー]', error);
     return c.json({ error: error.message }, 500);
   }
 });

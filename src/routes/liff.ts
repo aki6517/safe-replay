@@ -317,6 +317,70 @@ liffRouter.get('/', (c) => {
         .workspace-list li {
           margin-top: 4px;
         }
+
+        .tos-gate {
+          display: none;
+        }
+
+        .tos-gate h2 {
+          font-size: 20px;
+          color: #1a1a1a;
+          margin-bottom: 12px;
+          text-align: center;
+        }
+
+        .tos-gate > p {
+          font-size: 14px;
+          color: #4b5563;
+          margin-bottom: 16px;
+          text-align: center;
+          line-height: 1.6;
+        }
+
+        .tos-links {
+          list-style: none;
+          background: #f9fafb;
+          border-radius: 12px;
+          padding: 16px 20px;
+          margin-bottom: 16px;
+        }
+
+        .tos-links li {
+          margin-bottom: 10px;
+        }
+
+        .tos-links li:last-child {
+          margin-bottom: 0;
+        }
+
+        .tos-links a {
+          color: #667eea;
+          font-size: 14px;
+          text-decoration: none;
+          font-weight: 500;
+        }
+
+        .tos-links a:hover {
+          text-decoration: underline;
+        }
+
+        .tos-notice {
+          font-size: 12px;
+          color: #9ca3af;
+          line-height: 1.6;
+          text-align: center;
+          margin-bottom: 20px;
+        }
+
+        .btn-tos {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+        }
+
+        .btn-tos:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
       </style>
     </head>
     <body>
@@ -332,6 +396,25 @@ liffRouter.get('/', (c) => {
             <h2>設定完了！</h2>
             <p>SafeReplyがメッセージを監視して<br>LINEにお知らせします。</p>
             <button class="btn btn-complete" onclick="liff.closeWindow()">閉じる</button>
+          </div>
+
+          <div class="tos-gate" id="tosGate">
+            <div class="header">
+              <h1>🛡️ SafeReply</h1>
+            </div>
+            <h2>はじめにご確認ください</h2>
+            <p>SafeReplyをご利用いただくには、<br>以下への同意が必要です。</p>
+            <ul class="tos-links">
+              <li>📄 <a href="#" target="_blank">利用規約</a></li>
+              <li>🔒 <a href="#" target="_blank">プライバシーポリシー</a></li>
+            </ul>
+            <p class="tos-notice">
+              SafeReplyはGmailの内容をAI処理し、LINE経由で通知します。<br>
+              メール内容はサーバーに一時保存され、90日後に自動削除されます。
+            </p>
+            <button class="btn btn-tos" onclick="acceptTos()">
+              ✅ 同意して始める
+            </button>
           </div>
 
           <div id="mainContent" style="display: none;">
@@ -403,6 +486,7 @@ liffRouter.get('/', (c) => {
         let lineUserId = null;
         let userProfile = null;
         let slackOauthConfigured = false;
+        let tosAccepted = false;
 
         async function initLiff() {
           try {
@@ -427,9 +511,16 @@ liffRouter.get('/', (c) => {
             const data = await response.json();
 
             document.getElementById('loading').classList.remove('show');
-            document.getElementById('mainContent').style.display = 'block';
 
+            tosAccepted = !!data.tosAccepted;
             slackOauthConfigured = !!data.slackOauthConfigured;
+
+            if (!tosAccepted) {
+              document.getElementById('tosGate').style.display = 'block';
+              return;
+            }
+
+            document.getElementById('mainContent').style.display = 'block';
 
             if (data.gmailConnected) {
               setGmailConnected();
@@ -445,6 +536,34 @@ liffRouter.get('/', (c) => {
           } catch (error) {
             console.error('LIFF init error:', error);
             alert('初期化エラー: ' + error.message);
+          }
+        }
+
+        async function acceptTos() {
+          const btn = document.querySelector('#tosGate .btn-tos');
+          btn.disabled = true;
+          btn.textContent = '処理中...';
+
+          try {
+            const response = await fetch(apiBaseUrl + '/api/user/accept-tos', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ lineUserId })
+            });
+
+            if (response.ok) {
+              tosAccepted = true;
+              document.getElementById('tosGate').style.display = 'none';
+              document.getElementById('mainContent').style.display = 'block';
+            } else {
+              btn.disabled = false;
+              btn.textContent = '✅ 同意して始める';
+              alert('エラーが発生しました。もう一度お試しください。');
+            }
+          } catch (error) {
+            btn.disabled = false;
+            btn.textContent = '✅ 同意して始める';
+            alert('エラー: ' + error.message);
           }
         }
 
