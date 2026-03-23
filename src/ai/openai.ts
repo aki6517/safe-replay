@@ -35,6 +35,8 @@ async function logUsage(
 export class OpenAIProvider implements AIProvider {
   private client: OpenAI;
   private config: Required<AIProviderConfig>;
+  private modelNano: string;
+  private modelMini: string;
 
   constructor(config: AIProviderConfig = {}) {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -58,6 +60,11 @@ export class OpenAIProvider implements AIProvider {
       retryAttempts: config.retryAttempts ?? 3,
       retryDelayMs: config.retryDelayMs ?? 1000
     };
+
+    // nano: トリアージ・柔軟化など軽量処理用（低コスト）
+    // mini: ドラフト生成など高品質な文脈理解が必要な処理用
+    this.modelNano = process.env.OPENAI_MODEL_NANO || 'gpt-4o-mini';
+    this.modelMini = process.env.OPENAI_MODEL_MINI || process.env.OPENAI_MODEL || 'gpt-4o-mini';
   }
 
   /** 利用量ログ用のユーザーID（ポーリング時にセットされる） */
@@ -77,7 +84,8 @@ export class OpenAIProvider implements AIProvider {
     try {
       const { content, totalTokens } = await this.callAPIWithUsage(prompt, {
         temperature: 0.3,
-        maxTokens: 500
+        maxTokens: 500,
+        model: this.modelNano
       });
 
       // 利用量ログ
@@ -108,7 +116,8 @@ export class OpenAIProvider implements AIProvider {
     try {
       const { content, totalTokens } = await this.callAPIWithUsage(prompt, {
         temperature: 0.7,
-        maxTokens: this.config.maxTokens
+        maxTokens: this.config.maxTokens,
+        model: this.modelMini
       });
 
       logUsage(this._currentUserId, 'draft', totalTokens);
@@ -134,7 +143,8 @@ export class OpenAIProvider implements AIProvider {
     try {
       const { content, totalTokens } = await this.callAPIWithUsage(prompt, {
         temperature: 0.75,
-        maxTokens: 600
+        maxTokens: 600,
+        model: this.modelNano
       });
 
       logUsage(this._currentUserId, 'soften', totalTokens);
@@ -151,7 +161,7 @@ export class OpenAIProvider implements AIProvider {
    */
   private async callAPIWithUsage(
     prompt: string,
-    options: { temperature?: number; maxTokens?: number } = {}
+    options: { temperature?: number; maxTokens?: number; model?: string } = {}
   ): Promise<{ content: string; totalTokens: number }> {
     const content = await this.callAPI(prompt, options);
     // callAPIでは直接トークン数を取れないため、_lastTotalTokensを参照
@@ -165,18 +175,21 @@ export class OpenAIProvider implements AIProvider {
    */
   private async callAPI(
     prompt: string,
-    options: { temperature?: number; maxTokens?: number } = {}
+    options: { temperature?: number; maxTokens?: number; model?: string } = {}
   ): Promise<string> {
     let lastError: Error | null = null;
 
+    // options.model が指定されていればそちらを優先、なければ this.config.model を使用
+    const modelToUse = options.model || this.config.model;
+
     // gpt-5系モデルではmax_completion_tokensを使用
-    const isGPT5Model = this.config.model.startsWith('gpt-5') || this.config.model.includes('gpt-5');
+    const isGPT5Model = modelToUse.startsWith('gpt-5') || modelToUse.includes('gpt-5');
     const maxTokensParam = options.maxTokens ?? this.config.maxTokens;
 
     for (let attempt = 1; attempt <= this.config.retryAttempts; attempt++) {
       try {
         const requestParams: any = {
-          model: this.config.model,
+          model: modelToUse,
           messages: [
             {
               role: 'system',
