@@ -17,6 +17,7 @@ import { triageMessage } from '../../ai/triage';
 import { generateDraft } from '../../ai/draft';
 import { sendLineNotification } from '../notifier';
 import { isBlocked } from '../blocklist';
+import { canProcessMessage, incrementMessageCount } from '../plan-guard';
 
 /**
  * DBからアクティブユーザー一覧を取得
@@ -240,6 +241,22 @@ async function pollGmailForUser(
           const messageId = insertedData?.id;
 
           if (messageId) {
+            // プランチェック: Freeプランは5件/月まで
+            const planCheck = await canProcessMessage(credentials.userId);
+            if (!planCheck.allowed) {
+              // currentCountが5のとき（ちょうど上限に達した瞬間）だけ通知
+              if (planCheck.currentCount === 5) {
+                const { sendTextMessage } = await import('../line');
+                await sendTextMessage(
+                  credentials.lineUserId,
+                  '今月の無料枠（5件）を使い切りました。\nProプランにアップグレードすると無制限に使えます。'
+                );
+              }
+              messagesSkipped++;
+              await markMessageAsProcessed(credentials.userId, message.id);
+              continue;
+            }
+
             // スレッド履歴を取得（thread_idがある場合のみ）
             let threadContext: string | undefined;
             if (message.threadId) {
@@ -353,6 +370,9 @@ async function pollGmailForUser(
             } catch (triageError: any) {
               errors.push(`Triage error: ${triageError.message}`);
             }
+
+            // メッセージ処理カウントをインクリメント
+            await incrementMessageCount(credentials.userId);
 
             // 処理済みとしてマーク
             await markMessageAsProcessed(credentials.userId, message.id);

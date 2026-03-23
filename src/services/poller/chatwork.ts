@@ -12,6 +12,7 @@ import { getSupabase, isSupabaseAvailable } from '../../db/client';
 import { triageMessage } from '../../ai/triage';
 import { generateDraft } from '../../ai/draft';
 import { sendLineNotification } from '../notifier';
+import { isPro } from '../plan-guard';
 
 /**
  * Chatworkユーザー情報
@@ -111,6 +112,11 @@ async function pollChatworkForUser(
   const errors: string[] = [];
   let messagesNew = 0;
   let messagesSkipped = 0;
+
+  // Chatwork連携はProプラン限定
+  if (!await isPro(credentials.userId)) {
+    return { messagesNew: 0, messagesSkipped: 0, errors: ['Chatwork requires Pro plan'] };
+  }
 
   if (!isChatworkClientAvailable(credentials.chatworkApiToken)) {
     errors.push(`Chatwork API token invalid for user ${credentials.userId}`);
